@@ -1,7 +1,9 @@
 {
 	"compilerOptions": {
 		"target": "es2024",
-		"lib": ["es2024"],
+		"lib": [
+			"es2024"
+		],
 		"module": "preserve",
 		"moduleResolution": "bundler",
 		"types": [],
@@ -10,7 +12,14 @@
 		"allowImportingTsExtensions": true,
 		"isolatedModules": true,
 		"verbatimModuleSyntax": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"erasableSyntaxOnly": true
 	},
-	"include": ["src/worker", "src/shared", "cloudflare.config.ts", ".cloudflare/types"]
+	"include": [
+		"src/worker",
+		"src/engine",
+		"src/shared",
+		"cloudflare.config.ts",
+		".cloudflare/types"
+	]
 }

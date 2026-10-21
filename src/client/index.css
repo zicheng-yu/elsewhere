@@ -2,12 +2,31 @@
 
 @theme {
 	--font-serif: "Fraunces", Georgia, serif;
-	--font-sans: "Inter", system-ui, sans-serif;
+	--font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+	/* Surfaces and ink */
 	--color-paper: #faf7f2;
+	--color-card: #fffdf8;
 	--color-ink: #1f1b16;
-	--color-muted: #6b6258;
-	--color-accent: #b4532a;
+	--color-ink-2: #5b534a;
+	--color-muted: #6f665c;
 	--color-line: #e7e0d6;
+	--color-wash: #f2ece2;
+
+	/* Brand accent for controls */
+	--color-accent: #b4532a;
+	--color-accent-ink: #ffffff;
+
+	/* Data roles (validated: blue sequential, orange emphasis) */
+	--color-viz-fill: #2a78d6;
+	--color-viz-track: #cde2fb;
+	--color-viz-accent: #eb6834;
+	--color-viz-muted: #8a8178;
+
+	/* Status (always paired with an icon and a label) */
+	--color-good: #0ca30c;
+	--color-warning: #fab219;
+	--color-serious: #ec835a;
 }
 
 @layer base {
@@ -16,19 +35,234 @@
 	}
 
 	@media (prefers-color-scheme: dark) {
-		:root {
+		:root:where(:not([data-theme="light"])) {
 			color-scheme: dark;
 			--color-paper: #16130f;
+			--color-card: #1f1b16;
 			--color-ink: #f2ede6;
-			--color-muted: #a39a8f;
+			--color-ink-2: #c9c0b4;
+			--color-muted: #8f877c;
+			--color-line: #2e2822;
+			--color-wash: #27221c;
 			--color-accent: #e07a4f;
-			--color-line: #2c2620;
+			--color-accent-ink: #16130f;
+			--color-viz-fill: #3987e5;
+			--color-viz-track: #104281;
+			--color-viz-accent: #d95926;
+			--color-viz-muted: #8f877c;
 		}
+	}
+
+	:root[data-theme="dark"] {
+		color-scheme: dark;
+		--color-paper: #16130f;
+		--color-card: #1f1b16;
+		--color-ink: #f2ede6;
+		--color-ink-2: #c9c0b4;
+		--color-muted: #8f877c;
+		--color-line: #2e2822;
+		--color-wash: #27221c;
+		--color-accent: #e07a4f;
+		--color-accent-ink: #16130f;
+		--color-viz-fill: #3987e5;
+		--color-viz-track: #104281;
+		--color-viz-accent: #d95926;
+		--color-viz-muted: #8f877c;
 	}
 
 	body {
 		background-color: var(--color-paper);
 		color: var(--color-ink);
 		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+	}
+
+	::selection {
+		background: color-mix(in oklab, var(--color-accent) 25%, transparent);
+	}
+}
+
+@layer components {
+	.card {
+		background: var(--color-card);
+		border: 1px solid var(--color-line);
+		border-radius: 1rem;
+	}
+
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		border-radius: 999px;
+		padding: 0.55rem 1.1rem;
+		font-weight: 500;
+		font-size: 0.9rem;
+		transition:
+			background-color 120ms,
+			opacity 120ms;
+	}
+
+	.btn-primary {
+		background: var(--color-accent);
+		color: var(--color-accent-ink);
+	}
+
+	.btn-primary:hover {
+		background: color-mix(in oklab, var(--color-accent) 88%, black);
+	}
+
+	.btn-quiet {
+		border: 1px solid var(--color-line);
+		color: var(--color-ink);
+	}
+
+	.btn-quiet:hover {
+		background: var(--color-wash);
+	}
+
+	.btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.eyebrow {
+		font-size: 0.72rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--color-muted);
+	}
+
+	.field-label {
+		display: block;
+		font-size: 0.85rem;
+		font-weight: 500;
+		margin-bottom: 0.4rem;
+	}
+
+	.input {
+		width: 100%;
+		border-radius: 0.75rem;
+		border: 1px solid var(--color-line);
+		background: var(--color-card);
+		padding: 0.6rem 0.8rem;
+		font-size: 0.95rem;
+		outline: none;
+	}
+
+	.input:focus-within,
+	.input:focus {
+		border-color: color-mix(in oklab, var(--color-accent) 60%, var(--color-line));
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 18%, transparent);
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		border-radius: 999px;
+		border: 1px solid var(--color-line);
+		background: var(--color-wash);
+		padding: 0.15rem 0.6rem;
+		font-size: 0.8rem;
+	}
+
+	.tabular {
+		font-variant-numeric: tabular-nums;
+	}
+}
+
+/* Map markers (HTML, so labels never depend on map fonts) */
+.map-marker {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	pointer-events: auto;
+	cursor: default;
+}
+
+.map-marker .dot {
+	width: 12px;
+	height: 12px;
+	border-radius: 999px;
+	box-shadow: 0 0 0 2px var(--color-card);
+	flex: none;
+}
+
+.map-marker .label {
+	font: 500 11px/1.2 var(--font-sans);
+	color: var(--color-ink);
+	background: color-mix(in oklab, var(--color-card) 88%, transparent);
+	border-radius: 6px;
+	padding: 2px 6px;
+	max-width: 160px;
+}
+
+.map-marker .label.is-hidden {
+	visibility: hidden;
+}
+
+.map-marker:hover {
+	z-index: 2;
+}
+
+.map-marker:hover .label.is-hidden {
+	visibility: visible;
+}
+
+.map-marker.stop .dot {
+	width: 20px;
+	height: 20px;
+	display: grid;
+	place-items: center;
+	color: var(--color-card);
+	font: 600 11px/1 var(--font-sans);
+	background: var(--color-ink);
+}
+
+/* MapLibre controls on the app's surfaces. Scoped under .map-frame so these
+   win over maplibre-gl.css, which loads later with the map chunk. */
+.map-frame .maplibregl-ctrl-group {
+	background: var(--color-card);
+	box-shadow: 0 0 0 1px var(--color-line);
+}
+
+.map-frame .maplibregl-ctrl-group button + button {
+	border-top-color: var(--color-line);
+}
+
+.map-frame .maplibregl-ctrl.maplibregl-ctrl-attrib,
+.map-frame .maplibregl-ctrl-attrib.maplibregl-compact {
+	background-color: color-mix(in oklab, var(--color-card) 86%, transparent);
+	color: var(--color-ink-2);
+}
+
+.map-frame .maplibregl-ctrl-attrib a {
+	color: var(--color-ink-2);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:where(:not([data-theme="light"])) .map-frame :is(.maplibregl-ctrl-icon, .maplibregl-ctrl-attrib-button) {
+		filter: invert(1);
+	}
+}
+
+:root[data-theme="dark"] .map-frame :is(.maplibregl-ctrl-icon, .maplibregl-ctrl-attrib-button) {
+	filter: invert(1);
+}
+
+@keyframes progress {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(300%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation: none !important;
+		transition: none !important;
 	}
 }
