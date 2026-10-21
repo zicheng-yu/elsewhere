@@ -5,6 +5,7 @@
  */
 import type { Emit } from "../../shared/events.ts";
 import { monthName, percentile } from "../../shared/format.ts";
+import { attentionExtremes } from "../../shared/trend.ts";
 import type {
 	Hotspot,
 	LocalPlan,
@@ -75,6 +76,7 @@ export async function resolveTripTool(ctx: ToolContext, request: TripRequest): P
 	ctx.state.request = request;
 	ctx.state.hotspot = hotspot;
 	ctx.emit({ type: "ui.hotspot", hotspot });
+	const attention = attentionExtremes(hotspot.trend);
 	return {
 		destination: {
 			name: hotspot.locality.name,
@@ -84,6 +86,9 @@ export async function resolveTripTool(ctx: ToolContext, request: TripRequest): P
 			isPeakSeason: hotspot.season.isPeak,
 			peakMonths: hotspot.season.peakMonths.map(monthName),
 			eventsThisMonth: hotspot.season.events,
+			pastYearAttention: attention.busiest
+				? { busiestMonth: monthName(attention.busiest), quietestMonth: monthName(attention.quietest), source: "Qloo weekly trending" }
+				: undefined,
 		},
 		crowdedSpots: hotspot.crowdedSpots.map((s) => ({
 			id: s.id,

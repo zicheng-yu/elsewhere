@@ -6,7 +6,7 @@
  * is read from several candidate paths. Verbose fields such as `akas` are
  * dropped here so they never reach the LLM.
  */
-import type { HeatCell, Locality, Place, TagRef, TasteEntity, TasteKind } from "../../shared/types.ts";
+import type { HeatCell, Locality, Place, TagRef, TasteEntity, TasteKind, TrendPoint } from "../../shared/types.ts";
 
 type Obj = Record<string, unknown>;
 
@@ -224,11 +224,7 @@ export function tagsOf(response: unknown): TagRef[] {
 	return toTags(Array.isArray(list) ? list : []);
 }
 
-export interface TrendPoint {
-	date: string;
-	percentile: number;
-}
-
+/** Weekly trend points, oldest first, with percentiles scaled to [0, 1] whichever scale the response uses. */
 export function trendOf(response: unknown): TrendPoint[] {
 	const list = first(response, "results.trending", "results");
 	if (!Array.isArray(list)) return [];
@@ -236,9 +232,12 @@ export function trendOf(response: unknown): TrendPoint[] {
 	for (const item of list) {
 		const date = str(get(item, "date"));
 		const percentile = num(first(item, "population_percentile", "percentile"));
-		if (date && percentile !== undefined) points.push({ date, percentile });
+		if (date && percentile !== undefined) points.push({ date: date.slice(0, 10), percentile });
 	}
-	return points.sort((a, b) => a.date.localeCompare(b.date));
+	const scale = points.some((p) => p.percentile > 1) ? 100 : 1;
+	return points
+		.map((p) => ({ date: p.date, percentile: Math.min(1, Math.max(0, p.percentile / scale)) }))
+		.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** Shared traits from an analysis/compare response, whatever list it returns. */

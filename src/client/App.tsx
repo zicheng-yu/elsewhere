@@ -136,6 +136,8 @@ function JourneyScreen({
 	onReplay: () => void;
 }) {
 	const running = view.status === "running";
+	// Nothing to show but the problem: lead with it and a way forward.
+	const deadEnd = !view.hotspot && !running && Boolean(view.error || view.clarify);
 	const [copied, setCopied] = useState(false);
 	const share = async () => {
 		await navigator.clipboard?.writeText(window.location.href).catch(() => undefined);
@@ -155,7 +157,7 @@ function JourneyScreen({
 							<Icon name="sparkle" /> Replay the agent
 						</button>
 					) : null}
-					{view.journeyId ? (
+					{view.journeyId && view.hotspot ? (
 						<button type="button" className="btn btn-quiet px-3 py-1.5 text-xs" onClick={share}>
 							<Icon name="share" /> {copied ? "Link copied" : "Share"}
 						</button>
@@ -163,68 +165,100 @@ function JourneyScreen({
 				</div>
 			</div>
 
-			{view.error ? (
-				<div role="alert" className="card flex items-start gap-3 border-serious/40 p-4 text-sm">
-					<Icon name="alert" className="mt-0.5 size-4 text-serious" />
-					<span>{view.error}</span>
-				</div>
-			) : null}
-
-			{view.clarify ? (
-				<div className="card space-y-3 p-4">
-					<p className="text-sm">{view.clarify.question}</p>
-					<div className="flex flex-wrap gap-2">
-						{view.clarify.options.map((option) => (
-							<button key={option} type="button" className="btn btn-quiet px-3 py-1 text-sm" onClick={() => onRetry(option)}>
-								{option}
-							</button>
-						))}
+			{deadEnd ? (
+				<section role="alert" className="card mx-auto max-w-2xl space-y-5 p-6 sm:p-8">
+					<div className="flex items-start gap-3">
+						<Icon name="alert" className="mt-1.5 size-5 shrink-0 text-serious" />
+						<div className="space-y-1.5">
+							<h1 className="font-serif text-2xl sm:text-3xl">{view.clarify ? "Which place did you mean?" : "We couldn't read that trip"}</h1>
+							<p className="text-sm text-ink-2">{view.clarify?.question ?? view.error}</p>
+						</div>
 					</div>
-				</div>
-			) : null}
-
-			{view.hotspot ? (
-				<HotspotHeader hotspot={view.hotspot} />
-			) : running ? (
-				<div className="card h-40 animate-pulse bg-wash" aria-hidden="true" />
-			) : null}
-
-			<div className="grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
-				<aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-					<Narrative text={view.narrative} running={running} />
-					{view.steps.length > 0 ? (
-						<AgentTrace
-							steps={view.steps}
-							thinking={view.thinking}
-							running={running}
-							evidenceCount={view.evidence.length}
-							onShowEvidence={onShowEvidence}
-						/>
-					) : null}
-					<FollowUp modes={view.modes} busy={running} onSend={onMessage} />
-					<BaselinePanel request={view.request} />
-				</aside>
-				<div className="min-w-0 space-y-12">
-					{view.hotspot ? (
-						<ZoomSection
-							hotspot={view.hotspot}
-							zooms={view.zooms}
-							running={running && view.activity === "journey"}
-							planBusy={running}
-							selected={selected}
-							onPlan={(target) => onPlan(target)}
-						/>
-					) : null}
-					{view.activity === "plan" && !view.plan ? (
-						<div className="card flex items-center gap-3 p-6 text-sm text-ink-2">
-							<Icon name="spinner" /> Planning it like a local…
+					{view.clarify && view.clarify.options.length > 0 ? (
+						<div className="flex flex-wrap gap-2">
+							{view.clarify.options.map((option) => (
+								<button key={option} type="button" className="btn btn-quiet px-3 py-1.5 text-sm" onClick={() => onRetry(option)}>
+									{option}
+								</button>
+							))}
 						</div>
 					) : null}
-					{view.plan ? (
-						<LocalGuide plan={view.plan} busy={running} onReplan={(prefs) => onPlan(view.plan?.target.ref ?? { level: "hotspot" }, prefs)} />
+					<div className="flex flex-wrap items-center gap-3">
+						<button type="button" className="btn btn-primary" onClick={() => navigate("/")}>
+							Try another destination
+						</button>
+						<span className="text-xs text-muted">Tip: pick a city from the suggestions as you type.</span>
+					</div>
+					{view.steps.length > 0 ? (
+						<AgentTrace steps={view.steps} thinking={view.thinking} running={false} evidenceCount={view.evidence.length} onShowEvidence={onShowEvidence} />
 					) : null}
-				</div>
-			</div>
+				</section>
+			) : (
+				<>
+					{view.error ? (
+						<div role="alert" className="card flex items-start gap-3 border-serious/40 p-4 text-sm">
+							<Icon name="alert" className="mt-0.5 size-4 text-serious" />
+							<span>{view.error}</span>
+						</div>
+					) : null}
+
+					{view.clarify ? (
+						<div className="card space-y-3 p-4">
+							<p className="text-sm">{view.clarify.question}</p>
+							<div className="flex flex-wrap gap-2">
+								{view.clarify.options.map((option) => (
+									<button key={option} type="button" className="btn btn-quiet px-3 py-1 text-sm" onClick={() => onRetry(option)}>
+										{option}
+									</button>
+								))}
+							</div>
+						</div>
+					) : null}
+
+					{view.hotspot ? (
+						<HotspotHeader hotspot={view.hotspot} />
+					) : running ? (
+						<div className="card h-40 animate-pulse bg-wash" aria-hidden="true" />
+					) : null}
+
+					<div className="grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
+						<aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+							<Narrative text={view.narrative} running={running} />
+							{view.steps.length > 0 ? (
+								<AgentTrace
+									steps={view.steps}
+									thinking={view.thinking}
+									running={running}
+									evidenceCount={view.evidence.length}
+									onShowEvidence={onShowEvidence}
+								/>
+							) : null}
+							<FollowUp modes={view.modes} busy={running} onSend={onMessage} />
+							<BaselinePanel request={view.request} />
+						</aside>
+						<div className="min-w-0 space-y-12">
+							{view.hotspot ? (
+								<ZoomSection
+									hotspot={view.hotspot}
+									zooms={view.zooms}
+									running={running && view.activity === "journey"}
+									planBusy={running}
+									selected={selected}
+									onPlan={(target) => onPlan(target)}
+								/>
+							) : null}
+							{view.activity === "plan" && !view.plan ? (
+								<div className="card flex items-center gap-3 p-6 text-sm text-ink-2">
+									<Icon name="spinner" /> Planning it like a local…
+								</div>
+							) : null}
+							{view.plan ? (
+								<LocalGuide plan={view.plan} busy={running} onReplan={(prefs) => onPlan(view.plan?.target.ref ?? { level: "hotspot" }, prefs)} />
+							) : null}
+						</div>
+					</div>
+				</>
+			)}
 		</main>
 	);
 }

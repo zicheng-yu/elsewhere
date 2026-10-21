@@ -2,7 +2,7 @@
  * Typed helpers for the Qloo endpoints Elsewhere uses. Parameter names follow
  * the official docs: GET only, every parameter in the query string.
  */
-import type { HeatCell, Locality, Place, TagRef, TasteEntity } from "../../shared/types.ts";
+import type { HeatCell, Locality, Place, TagRef, TasteEntity, TrendPoint } from "../../shared/types.ts";
 import type { QlooClient } from "./client.ts";
 import {
 	compareTraitsOf,
@@ -13,7 +13,6 @@ import {
 	toPlace,
 	toTaste,
 	trendOf,
-	type TrendPoint,
 } from "./normalize.ts";
 
 export const ENTITY_TYPE = {
@@ -258,6 +257,7 @@ export class QlooApi {
 		return compareTraitsOf(response);
 	}
 
+	/** Weekly attention for one entity between two ISO dates (YYYY-MM-DD). */
 	async trending(type: string, entityId: string, start: string, end: string): Promise<TrendPoint[]> {
 		const response = await this.client.get(
 			"/v2/trending",

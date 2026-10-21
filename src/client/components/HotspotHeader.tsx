@@ -1,6 +1,7 @@
 import { monthName, percentile } from "../../shared/format.ts";
 import type { Hotspot } from "../../shared/types.ts";
 import { useWikiImage } from "../lib/wiki.ts";
+import { CrowdCalendar } from "./CrowdCalendar.tsx";
 import { Badge } from "./ui.tsx";
 
 export function HotspotHeader({ hotspot }: { hotspot: Hotspot }) {
@@ -36,6 +37,7 @@ export function HotspotHeader({ hotspot }: { hotspot: Hotspot }) {
 							</Badge>
 						))}
 					</div>
+					<CrowdCalendar season={season} trend={hotspot.trend} place={locality.name} />
 					{hotspot.crowdedSpots.length > 0 ? (
 						<div className="space-y-1.5">
 							<p className="text-xs text-muted">Crowded must-sees</p>

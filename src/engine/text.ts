@@ -33,7 +33,29 @@ export function matchNormalized(q: string, n: string): number {
 		total++;
 		if (nameTokens.has(token)) common++;
 	}
-	return total === 0 ? 0 : (0.75 * common) / total;
+	const tokens = total === 0 ? 0 : (0.75 * common) / total;
+	return Math.max(tokens, typoScore(q, n));
+}
+
+/** Tolerates a slip or two in a short name ("Kyto" → "Kyoto", "Barcelonna" → "Barcelona"). */
+function typoScore(q: string, n: string): number {
+	const longest = Math.max(q.length, n.length);
+	if (longest < 4 || longest > 24 || Math.abs(q.length - n.length) > 2) return 0;
+	const similarity = 1 - editDistance(q, n) / longest;
+	return similarity >= 0.8 ? 0.7 * similarity : 0;
+}
+
+function editDistance(a: string, b: string): number {
+	let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+	for (let i = 1; i <= a.length; i++) {
+		const current = [i];
+		for (let j = 1; j <= b.length; j++) {
+			const substitution = (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1);
+			current.push(Math.min((previous[j] ?? 0) + 1, (current[j - 1] ?? 0) + 1, substitution));
+		}
+		previous = current;
+	}
+	return previous[b.length] ?? 0;
 }
 
 export function slugify(text: string): string {

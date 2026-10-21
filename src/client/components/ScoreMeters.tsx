@@ -49,7 +49,7 @@ export function PopularityShift({ from, to, fromLabel, toLabel }: { from?: numbe
 	return (
 		<figure className="space-y-1.5">
 			<figcaption className="flex items-baseline justify-between gap-2 text-xs">
-				<span className="text-ink-2">Popularity percentile</span>
+				<span className="text-ink-2">Popularity</span>
 				<span className="tabular flex items-center gap-1.5 text-ink" aria-hidden="true">
 					<span className="inline-block size-2 rounded-full bg-viz-muted" title={fromLabel} />
 					{percentile(from)}

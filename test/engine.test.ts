@@ -4,7 +4,7 @@ import type { JourneyState, ToolContext } from "../src/engine/agent/tools.ts";
 import { haversineKm } from "../src/engine/geo.ts";
 import { planLocal } from "../src/engine/local.ts";
 import { QlooError } from "../src/engine/qloo/client.ts";
-import { resolveTrip } from "../src/engine/resolve.ts";
+import { ResolveError, resolveDestination, resolveTrip } from "../src/engine/resolve.ts";
 import { findCityTwins } from "../src/engine/zoom/cities.ts";
 import { findSpotTwins } from "../src/engine/zoom/city.ts";
 import { findDayTrips } from "../src/engine/zoom/region.ts";
@@ -52,7 +52,16 @@ describe("engine on the test world", () => {
 		expect(hotspot.crowdedSpots.map((s) => s.name)).toEqual(["Crowded Shrine", "Busy Temple"]);
 		expect(hotspot.tasteProfile.map((t) => t.name)).toEqual(["Calm Film"]);
 		expect(hotspot.vibeTags.map((t) => t.name)).toEqual(["Quiet"]);
+		expect(hotspot.trend?.length).toBeGreaterThanOrEqual(52);
+		expect(hotspot.trend?.every((p) => p.percentile >= 0 && p.percentile <= 1)).toBe(true);
 		expect(evidence.every((e) => e.ok)).toBe(true);
+	});
+
+	it("resolves a destination written with its country or a typo", async () => {
+		const api = testApi();
+		expect((await resolveDestination(api, "Testa, Testland")).name).toBe("Testa");
+		expect((await resolveDestination(api, "Quiettn Testland")).name).toBe("Quietton");
+		await expect(resolveDestination(api, "Atlantis")).rejects.toBeInstanceOf(ResolveError);
 	});
 
 	it("finds quieter twins in the same city", async () => {

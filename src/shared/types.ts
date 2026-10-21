@@ -138,9 +138,17 @@ export interface SeasonInfo {
 	advisories: string[];
 }
 
+/** One week of Qloo attention for an entity, as a popularity percentile in [0, 1]. */
+export interface TrendPoint {
+	date: string;
+	percentile: number;
+}
+
 export interface Hotspot {
 	locality: Locality;
 	season: SeasonInfo;
+	/** Weekly attention to the destination over the past year, when Qloo's trending endpoint has it. */
+	trend?: TrendPoint[];
 	crowdedSpots: Place[];
 	tasteProfile: TasteEntity[];
 	vibeTags: TagRef[];

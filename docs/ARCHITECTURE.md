@@ -41,7 +41,7 @@ flowchart LR
 | Where your taste concentrates | `filter.type=urn:heatmap` with `filter.location=<city>` and taste signals |
 | Season | Locality tags: `peak_tourism_month`, `off_season_month`, `best_month_for_travel`, `{month}_event` |
 | Shared character | Entity tags, plus `GET /v2/analysis/compare` when tags alone find too few |
-| Popularity over time | `GET /v2/trending` |
+| Crowd calendar | `GET /v2/trending` with `filter.type=urn:entity:locality`, one locality signal and the past year's `filter.start_date` / `filter.end_date`; drawn over the month tags, and hidden if the endpoint doesn't answer |
 
 All requests are GET with parameters in the query string, sent to `https://hackathon.api.qloo.com` with the `X-Api-Key` header. Responses are cached privately in Workers KV for seven days. The repository contains no Qloo data.
 

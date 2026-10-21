@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { geohashBounds, geohashCenter, geohashEncode, haversineKm } from "../src/engine/geo.ts";
 import { toSearchParams } from "../src/engine/qloo/client.ts";
-import { heatCellsOf, toLocality, toPlace, toTaste } from "../src/engine/qloo/normalize.ts";
+import { heatCellsOf, toLocality, toPlace, toTaste, trendOf } from "../src/engine/qloo/normalize.ts";
 import { buildScore, crowdRelief, proximity } from "../src/engine/scoring.ts";
 import { seasonInfo, seasonScore } from "../src/engine/season.ts";
 import { matchScore } from "../src/engine/text.ts";
 import { percentile } from "../src/shared/format.ts";
+import { attentionExtremes, monthlyAttention } from "../src/shared/trend.ts";
 import type { Locality } from "../src/shared/types.ts";
 
 describe("normalize", () => {
@@ -70,6 +71,40 @@ describe("normalize", () => {
 	});
 });
 
+describe("trend", () => {
+	it("reads weekly points in either percentile scale, oldest first", () => {
+		const hundred = trendOf({
+			results: {
+				trending: [
+					{ date: "2026-02-02", population_percentile: 97.5 },
+					{ date: "2026-01-05T00:00:00Z", population_percentile: 99.2 },
+				],
+			},
+		});
+		expect(hundred).toEqual([
+			{ date: "2026-01-05", percentile: 0.992 },
+			{ date: "2026-02-02", percentile: 0.975 },
+		]);
+		expect(trendOf({ results: { trending: [{ date: "2026-03-02", population_percentile: 0.5 }] } })).toEqual([{ date: "2026-03-02", percentile: 0.5 }]);
+		expect(trendOf({ results: {} })).toEqual([]);
+	});
+
+	it("averages by calendar month and finds the busiest and quietest", () => {
+		const trend = [
+			{ date: "2025-11-03", percentile: 0.9 },
+			{ date: "2026-01-05", percentile: 0.6 },
+			{ date: "2026-01-12", percentile: 0.8 },
+			{ date: "2026-04-06", percentile: 0.99 },
+		];
+		const months = monthlyAttention(trend);
+		expect(months[0]).toBeCloseTo(0.7);
+		expect(months[1]).toBeUndefined();
+		expect(attentionExtremes(trend)).toEqual({ busiest: 4, quietest: 1 });
+		expect(attentionExtremes([{ date: "2026-01-05", percentile: 0.6 }])).toEqual({});
+		expect(attentionExtremes(undefined)).toEqual({});
+	});
+});
+
 describe("client", () => {
 	it("builds deterministic query strings", () => {
 		const params = toSearchParams({ take: 5, "filter.type": "urn:entity:place", empty: "", list: ["a", "b"], none: undefined, skip: [] });
@@ -120,6 +155,16 @@ describe("season", () => {
 		expect(april).toMatchObject({ isPeak: true, isBestMonth: false, events: ["Miyako Odori"], peakMonths: [4], bestMonths: [5] });
 		expect(seasonScore(april)).toBeLessThan(seasonScore(seasonInfo(locality, 5)) ?? 0);
 		expect(seasonScore(seasonInfo(locality, undefined))).toBeUndefined();
+	});
+});
+
+describe("name matching", () => {
+	it("forgives small typos but not different places", () => {
+		expect(matchScore("Kyto", "Kyoto")).toBeGreaterThanOrEqual(0.5);
+		expect(matchScore("Barcelonna", "Barcelona")).toBeGreaterThanOrEqual(0.5);
+		expect(matchScore("Paris", "Parma")).toBeLessThan(0.5);
+		expect(matchScore("Rome", "Rouen")).toBeLessThan(0.5);
+		expect(matchScore("Fushimi Inari", "Fushimi Inari Taisha")).toBe(0.9);
 	});
 });
 

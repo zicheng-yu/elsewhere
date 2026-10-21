@@ -45,7 +45,7 @@ Choose **Go like a local** and the agent builds the rest of the trip:
 - **Qloo:**
   - `/search` and `/v2/tags` resolve entities and vibes.
   - `/v2/insights` provides place, locality and heatmap outputs, using location, radius, exclusion, popularity and result-entity filters.
-  - `/v2/analysis/compare` adds shared traits, and `/v2/trending` adds popularity over time.
+  - `/v2/analysis/compare` adds shared traits, and `/v2/trending` draws a crowd calendar: the destination's weekly attention over the past year, over Qloo's peak, best and off-season month tags.
   - Every request is a GET to the hackathon host, cached privately in Workers KV.
 - **Platform:**
   - One Cloudflare Worker serves the React app and a Hono API.

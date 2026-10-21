@@ -3,6 +3,7 @@
  * engine's results; nothing is generated.
  */
 import { joinNames, km, monthName, pct, percentile } from "../shared/format.ts";
+import { attentionExtremes } from "../shared/trend.ts";
 import type { CityTwin, DupeScore, Hotspot, LocalPlan, ScoreKey, ZoomResult } from "../shared/types.ts";
 
 function component(score: DupeScore, key: ScoreKey): number | undefined {
@@ -23,6 +24,12 @@ export function narrateHotspot(hotspot: Hotspot): string {
 	}
 	if (locality.popularity !== undefined) {
 		sentences.push(`${locality.name} sits in the ${percentile(locality.popularity)} popularity percentile on Qloo.`);
+	}
+	const { busiest, quietest } = attentionExtremes(hotspot.trend);
+	if (busiest && quietest) {
+		sentences.push(
+			`Over the past year, attention to ${locality.name} on Qloo peaked in ${monthName(busiest)} and dipped in ${monthName(quietest)}.`,
+		);
 	}
 	if (season.events.length > 0) sentences.push(`This month brings ${joinNames(season.events.slice(0, 2))}.`);
 	if (hotspot.crowdedSpots.length > 0) {

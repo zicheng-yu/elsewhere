@@ -1,5 +1,5 @@
-import type { Hotspot, Locality, Place, TagRef, TasteEntity, TripRequest } from "../shared/types.ts";
-import type { QlooApi } from "./qloo/endpoints.ts";
+import type { Hotspot, Locality, Place, TagRef, TasteEntity, TripRequest, TrendPoint } from "../shared/types.ts";
+import { ENTITY_TYPE, type QlooApi } from "./qloo/endpoints.ts";
 import { seasonInfo } from "./season.ts";
 import { matchScore } from "./text.ts";
 
@@ -29,26 +29,40 @@ async function settle<T>(task: Promise<T>): Promise<T | undefined> {
 }
 
 export async function resolveDestination(api: QlooApi, destination: string): Promise<Locality> {
-	const candidates = await api.searchLocalities(destination, 6);
-	const chosen = best(destination, candidates, 0.5, (l) => l.popularity ?? 0);
-	if (!chosen) {
-		throw new ResolveError(
-			`Couldn't find "${destination}" as a city in Qloo.`,
-			candidates.slice(0, 3).map((c) => c.name),
-		);
+	// "Lisbon, Portugal" and "Lisbon Portugal" fall back to the city part when the whole query misses.
+	const attempts = [destination, destination.split(",")[0], destination.replace(/\s+\S+$/, "")]
+		.map((query) => query?.trim() ?? "")
+		.filter((query, index, all) => query.length >= 2 && all.indexOf(query) === index);
+	const seen: string[] = [];
+	for (const query of attempts) {
+		const candidates = await api.searchLocalities(query, 6);
+		seen.push(...candidates.map((c) => c.name));
+		const chosen = best(query, candidates, 0.5, (l) => l.popularity ?? 0);
+		if (!chosen) continue;
+		// Search results can be sparse; the entities endpoint returns the full tag set (months, events).
+		const details = await settle(api.localityDetails(chosen.id));
+		return details && details.tags.length >= chosen.tags.length ? { ...chosen, ...details } : chosen;
 	}
-	// Search results can be sparse; the entities endpoint returns the full tag set (months, events).
-	const details = await settle(api.localityDetails(chosen.id));
-	return details && details.tags.length >= chosen.tags.length ? { ...chosen, ...details } : chosen;
+	throw new ResolveError(`Couldn't find "${destination}" as a city in Qloo.`, [...new Set(seen)].slice(0, 3));
+}
+
+const DAY_MS = 24 * 3600 * 1000;
+
+/** The destination's weekly attention over the past year; empty when the endpoint isn't available. */
+async function pastYearTrend(api: QlooApi, locality: Locality, now: Date): Promise<TrendPoint[]> {
+	const end = new Date(now.getTime() - DAY_MS);
+	const start = new Date(end.getTime() - 364 * DAY_MS);
+	const day = (date: Date) => date.toISOString().slice(0, 10);
+	return (await settle(api.trending(ENTITY_TYPE.locality, locality.id, day(start), day(end)))) ?? [];
 }
 
 /** Resolve a trip request into a hotspot: the destination, its crowded spots, and the traveler's taste. */
-export async function resolveTrip(api: QlooApi, request: TripRequest): Promise<Hotspot> {
+export async function resolveTrip(api: QlooApi, request: TripRequest, now = new Date()): Promise<Hotspot> {
 	const locality = await resolveDestination(api, request.destination);
 	const near = { lat: locality.lat, lon: locality.lon, radiusMiles: 30 };
 	const unresolved: string[] = [];
 
-	const [spots, favorites, vibes] = await Promise.all([
+	const [spots, favorites, vibes, trend] = await Promise.all([
 		Promise.all(
 			request.mustSees.map(async (name) => {
 				const found = await settle(api.searchPlaces(name, near, 4));
@@ -73,6 +87,7 @@ export async function resolveTrip(api: QlooApi, request: TripRequest): Promise<H
 				return tag;
 			}),
 		),
+		pastYearTrend(api, locality, now),
 	]);
 
 	const crowdedSpots: Place[] = uniqueById(spots.filter((s): s is Place => s !== undefined));
@@ -87,6 +102,7 @@ export async function resolveTrip(api: QlooApi, request: TripRequest): Promise<H
 	return {
 		locality,
 		season: seasonInfo(locality, request.month),
+		trend: trend.length >= 8 ? trend : undefined,
 		crowdedSpots: crowdedSpots.slice(0, 4),
 		tasteProfile: uniqueById(favorites.filter((f): f is TasteEntity => f !== undefined)),
 		vibeTags: uniqueById(vibes.filter((v): v is TagRef => v !== undefined)),

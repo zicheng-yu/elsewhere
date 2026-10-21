@@ -17,7 +17,9 @@ Elsewhere does it differently:
 
 ## How it works
 
-Pick how far you'll go:
+It starts by reading the hotspot: Qloo's peak, best and off-season month tags for the destination, and a crowd calendar of its weekly attention over the past year.
+
+Then pick how far you'll go:
 
 | Zoom level | Question it answers | Qloo signal |
 | --- | --- | --- |

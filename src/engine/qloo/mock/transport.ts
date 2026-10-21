@@ -62,7 +62,11 @@ function dot(a: Float64Array, b: Float64Array): number {
 /** Synthetic affinity from unit vectors: similarity plus a small popularity prior and deterministic jitter. */
 export function mockAffinity(signal: Float64Array, candidate: Float64Array, seed: string, popularity: number, prior = 0): number {
 	const jitter = (hashUnit(seed) - 0.5) * 0.024;
-	return round3(clamp(0.5 + 0.42 * dot(signal, candidate) + prior + 0.025 * popularity + jitter, 0.4, 0.995));
+	const raw = 0.5 + 0.42 * dot(signal, candidate) + prior + 0.025 * popularity + jitter;
+	// Saturate softly toward 0.96 instead of clipping, so close matches keep their order and never read as 100%.
+	const knee = 0.84;
+	const soft = raw <= knee ? raw : knee + 0.12 * Math.tanh((raw - knee) / 0.12);
+	return round3(clamp(soft, 0.4, 0.96));
 }
 
 interface SignalInfo {
