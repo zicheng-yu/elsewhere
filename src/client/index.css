@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+	--font-serif: "Fraunces", Georgia, serif;
+	--font-sans: "Inter", system-ui, sans-serif;
+	--color-paper: #faf7f2;
+	--color-ink: #1f1b16;
+	--color-muted: #6b6258;
+	--color-accent: #b4532a;
+	--color-line: #e7e0d6;
+}
+
+@layer base {
+	:root {
+		color-scheme: light;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:root {
+			color-scheme: dark;
+			--color-paper: #16130f;
+			--color-ink: #f2ede6;
+			--color-muted: #a39a8f;
+			--color-accent: #e07a4f;
+			--color-line: #2c2620;
+		}
+	}
+
+	body {
+		background-color: var(--color-paper);
+		color: var(--color-ink);
+		font-family: var(--font-sans);
+	}
+}
