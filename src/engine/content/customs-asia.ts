@@ -44,13 +44,17 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Baths and onsen",
-				text: "Wash and rinse thoroughly before entering a shared bath, keep your towel out of the water and skip swimwear unless the facility asks for it. Tattoo policies vary, so check ahead.",
+				text: "Wash and rinse thoroughly before entering a shared bath, keep your towel and hair out of the water, and skip swimwear unless the facility asks for it. Tattoo policies vary, so check ahead.",
+			},
+			{
+				topic: "Smoking",
+				text: "Many cities, including Osaka and Kyoto, ban smoking on the street outside designated smoking areas, and fines can apply. Osaka's citywide ban covers heated tobacco too.",
 			},
 		],
 		goodGuest: [
 			"Spend in family-run shops, eateries and inns, especially in regional towns that see fewer visitors.",
 			"See the most famous sights at opening time or near closing, and spend the busiest hours in lesser-known neighborhoods.",
-			"Send large luggage ahead with a forwarding service (takkyubin) so you're not taking up space on crowded trains and buses.",
+			"Send large luggage ahead with a forwarding service (takkyubin) to keep crowded trains and buses clear. On the Tokaido, Sanyo and Kyushu shinkansen, very large bags need a reserved oversized-baggage seat.",
 		],
 	},
 	{
@@ -59,11 +63,11 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 		notes: [
 			{
 				topic: "Gion lanes",
-				text: "Some private lanes in Gion are closed to visitors or ban photography, and fines can apply. Follow the posted signs and enjoy the district from its public streets.",
+				text: "Gion's private side lanes, mostly off Hanamikoji, are closed to visitors, and signs warn of fines. Hanamikoji and other public streets stay open, so follow the posted signs.",
 			},
 			{
 				topic: "Maiko and geiko",
-				text: "Maiko and geiko are usually on their way to work. Don't follow, block or touch them, and don't photograph them without permission; just let them pass.",
+				text: "Maiko and geiko are usually on their way to work. Don't follow, block or touch them, and don't stop them for photos or photograph them without permission; just let them pass.",
 			},
 			{
 				topic: "Getting around",
@@ -79,7 +83,11 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Residential lanes",
-				text: "Many machiya lanes are homes. Keep voices low, step aside rather than stopping in narrow streets, and don't sit on the bamboo fences or touch lanterns outside houses.",
+				text: "Many machiya lanes are homes. Keep voices low, step aside rather than stopping in narrow streets, and don't lean on fences or touch the lanterns outside teahouses.",
+			},
+			{
+				topic: "Bamboo groves",
+				text: "Never carve or scratch the bamboo in Arashiyama or at Fushimi Inari. It damages the plants and counts as a crime; take only photos.",
 			},
 		],
 		goodGuest: [
@@ -94,7 +102,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 		notes: [
 			{
 				topic: "The deer",
-				text: "Nara's deer are wild animals protected as a national Natural Monument. Feed them only the deer crackers (shika senbei) sold in the park, never your own snacks.",
+				text: "Nara's deer are wild animals protected as a national Natural Monument, and harming them is banned in the park. Feed them only the deer crackers (shika senbei) sold there, never other food.",
 			},
 			{
 				topic: "Around the deer",
@@ -105,12 +113,12 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 				text: "Deer will eat plastic bags and wrappers, which can kill them. Keep bags and paper maps out of reach, and take all your rubbish with you.",
 			},
 			{
-				topic: "Temple halls",
-				text: "Todai-ji, Kofuku-ji and Kasuga Taisha are active places of worship. Speak softly, follow the photography signs inside halls, and keep to the paths.",
+				topic: "Temples and shrines",
+				text: "Todai-ji, Kofuku-ji and the Kasuga Taisha shrine are active places of worship. Speak softly, follow the photography signs inside halls, and keep to the paths.",
 			},
 			{
 				topic: "Naramachi",
-				text: "Many of Naramachi's old townhouses are still homes. Keep voices low, don't linger in doorways, and ask before photographing residents.",
+				text: "Naramachi's old townhouses include homes as well as shops and cafés. Keep voices low, don't linger in doorways, and ask before photographing residents.",
 			},
 		],
 		goodGuest: [
@@ -124,7 +132,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 		notes: [
 			{
 				topic: "Teahouse districts",
-				text: "Higashi Chaya and the other chaya districts are home to residents and working teahouses. Keep voices low, stay on public streets, and don't peer into windows or doorways.",
+				text: "Higashi Chaya and the other chaya districts are home to residents and working teahouses. Keep voices low and don't peer into doorways; in Higashi Chaya, eat snacks at the shop, not while walking.",
 			},
 			{
 				topic: "Geisha",
@@ -140,7 +148,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Omicho Market",
-				text: "Omicho Market still supplies local cooks and restaurants. Eat at the stall or a seating area rather than while walking through the busy aisles.",
+				text: "Omicho Market's narrow lanes are busy with workers and local shoppers. The market asks visitors not to eat while walking, so eat at the stall or in a designated eating area.",
 			},
 			{
 				topic: "Nagamachi",
@@ -166,7 +174,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Street food",
-				text: "Many stalls sell snacks to eat on the spot. Eat beside the stall where you bought it and use its bin, rather than walking with food.",
+				text: "Many stalls sell snacks to eat on the spot. Eat beside the stall where you bought it rather than while walking, and use its bin or carry your rubbish with you.",
 			},
 			{
 				topic: "Ryokan stays",
@@ -174,7 +182,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Shirakawa-go",
-				text: "If you visit Shirakawa-go, remember that people live and farm in its thatched houses. Stay off private property and check current visitor guidance before you go.",
+				text: "People live and farm in Shirakawa-go. Unless you're staying overnight, visit only in daytime; stay off private land and fields, take your rubbish with you and check current rules before you go.",
 			},
 		],
 		goodGuest: [
@@ -218,7 +226,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 		],
 		goodGuest: [
-			"Visit palaces and hanok neighborhoods on weekday mornings, and explore smaller cities and regions beyond Seoul and Busan.",
+			"Visit palaces at opening time on weekdays, see hanok neighborhoods within their posted visiting hours, and explore smaller cities and regions beyond Seoul and Busan.",
 			"Eat at traditional markets and family-run restaurants, and stay in locally owned guesthouses.",
 		],
 	},
@@ -228,7 +236,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 		notes: [
 			{
 				topic: "Bukchon",
-				text: "Bukchon Hanok Village is a residential neighborhood. Part of it limits visitor hours, so check the posted times, keep quiet, and don't photograph homes or residents.",
+				text: "Bukchon Hanok Village is a lived-in neighborhood, and its busiest lanes are closed to tourists outside posted hours. Keep your voice down, and don't photograph residents or into homes.",
 			},
 			{
 				topic: "Residential lanes",
@@ -262,8 +270,8 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 		locality: "Gyeongju",
 		notes: [
 			{
-				topic: "Royal tombs",
-				text: "The grassy mounds in Daereungwon and around town are royal tombs. Never climb them or cross their fences; penalties can be severe.",
+				topic: "Silla tombs",
+				text: "The grassy mounds in Daereungwon and around town are ancient Silla tombs of kings, queens and nobles. They're protected heritage, so never climb them or cross their fences; penalties can apply.",
 			},
 			{
 				topic: "Bulguksa",
@@ -302,7 +310,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Inside temples",
-				text: "Step over door thresholds rather than on them, don't touch offerings or ritual objects, and ask before photographing people at prayer.",
+				text: "Step over door thresholds rather than on them, avoid walking in front of people as they pray, and leave offerings alone. Follow no-photo signs, and ask before photographing worshippers.",
 			},
 			{
 				topic: "Metro rules",
@@ -341,11 +349,11 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Head and feet",
-				text: "Avoid touching anyone's head, including children's, and don't point your feet at people or sacred objects. Remove shoes before entering homes and places of worship.",
+				text: "Avoid touching anyone's head, including children's, and don't point your feet at people or sacred objects. Remove your shoes in homes and mosques, and wherever you see shoes left at the door.",
 			},
 			{
 				topic: "Regional customs",
-				text: "Customs vary by island: most regions are Muslim-majority, while Bali is mainly Hindu. In Bali, wear a sarong and sash at temples and never step on the small offerings on the ground.",
+				text: "Customs vary by region: most areas are Muslim-majority, Bali is mainly Hindu and several eastern provinces mainly Christian. In Bali, wear a sarong and sash at temples and don't step on offerings.",
 			},
 			{
 				topic: "Temples and sacred sites",
@@ -353,15 +361,19 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Mosques and Ramadan",
-				text: "At mosques, cover arms and legs (women also cover their hair) and visit outside prayer times. During Ramadan, in Muslim-majority areas, be discreet about eating and drinking in public by day.",
+				text: "At mosques, cover arms and legs (women also cover their hair) and visit outside prayer times. During Ramadan, in Muslim-majority areas, be discreet about eating, drinking and smoking in public by day.",
 			},
 			{
 				topic: "Dress",
-				text: "Away from the beach, cover up: shoulders and knees covered is a good guide in towns, villages and markets.",
+				text: "Away from beaches and resorts, cover shoulders and knees, especially in towns, villages and markets. Aceh applies Islamic law, which also covers visitors, so check local rules before you go.",
 			},
 			{
 				topic: "Bargaining and tipping",
 				text: "Friendly bargaining is normal at markets but not in fixed-price shops. Tipping isn't required; many restaurants add a service charge, and rounding up is appreciated.",
+			},
+			{
+				topic: "Local laws",
+				text: "Drug offenses carry extremely severe penalties, including death. Indonesia's criminal code also penalizes sex outside marriage and unmarried cohabitation, but only if a spouse, parent or child files a complaint.",
 			},
 		],
 		goodGuest: [
@@ -384,7 +396,11 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Sacred spaces",
-				text: "Inner temple courtyards are often for worshippers only. Never climb shrines, walls, statues or sacred trees for photos, and follow each temple's posted rules.",
+				text: "Under Bali's rules for visitors, temples' inner and middle courtyards are only for people praying in Balinese dress. Never climb shrines, walls, statues or sacred trees, and follow posted rules.",
+			},
+			{
+				topic: "Temple entry",
+				text: "Bali's visitor rules ask women not to enter temples' inner courtyards while menstruating, and many temples post a similar notice at the entrance. Please respect it like any other temple rule.",
 			},
 			{
 				topic: "Ceremonies",
@@ -396,18 +412,18 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Monkey Forest",
-				text: "In the Sacred Monkey Forest, don't feed or touch the monkeys, keep food and loose items like sunglasses out of reach, and follow staff instructions.",
+				text: "In the Sacred Monkey Forest, don't feed, touch or stare at the monkeys. Food, drinks and plastic bags aren't allowed inside, and keep jewelry and other small items out of sight.",
 			},
 			{
 				topic: "Visitor rules",
-				text: "Bali charges foreign visitors a tourism levy and has published a code of conduct covering dress, temples and behavior. Check the current requirements before you arrive.",
+				text: "Foreign visitors must pay Bali's tourist levy online, through the official Love Bali website or app, ideally before arrival. Check Bali's current code of conduct for visitors before you go.",
 			},
 		],
 		goodGuest: [
 			"Visit temples and rice terraces early in the morning, and explore quieter areas such as Sidemen, Munduk or Amed.",
 			"Treat rice terraces as working farms: stay on the paths and pay any entry donation requested.",
-			"Carry a refillable bottle and bag; Bali restricts many single-use plastics.",
-			"Book local guides and drivers, eat at warungs and buy crafts directly from village artisans.",
+			"Carry a refillable bottle and bag: Bali's visitor rules ban single-use plastics such as bags, straws and plastic drink bottles.",
+			"Book licensed local guides and drivers, eat at warungs and buy crafts directly from village artisans.",
 		],
 	},
 
@@ -417,7 +433,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 		notes: [
 			{
 				topic: "Pagodas and temples",
-				text: "Cover shoulders and knees, take off your shoes where others have, and speak softly. Don't touch altars or offerings, and ask before photographing worshippers or monks.",
+				text: "Cover shoulders and knees, remove your hat, and take off your shoes where others have. Speak softly, don't touch altars, statues or offerings, and ask before photographing worshippers or monks.",
 			},
 			{
 				topic: "Greetings",
@@ -425,7 +441,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Dining",
-				text: "Let the host or the eldest start, and don't stand chopsticks upright in a rice bowl; it recalls the incense offered for the dead.",
+				text: "Let the host or the eldest start, and don't stand chopsticks upright in a rice bowl; it recalls offerings to the dead.",
 			},
 			{
 				topic: "Photos of people",
@@ -433,7 +449,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Bargaining",
-				text: "Friendly bargaining is normal at markets and with some street vendors, but not where prices are marked. Agree on boat or cyclo prices before setting off.",
+				text: "Friendly bargaining is normal at markets and with some street vendors, but not in supermarkets, malls or other fixed-price shops. Agree on boat or cyclo prices before setting off.",
 			},
 			{
 				topic: "Tipping",
@@ -442,6 +458,10 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			{
 				topic: "Crossing streets",
 				text: "Cross at a slow, steady pace so motorbike riders can predict your path, and avoid stopping or running suddenly.",
+			},
+			{
+				topic: "Vapes",
+				text: "E-cigarettes and heated tobacco are banned in Vietnam, including for visitors. Don't bring, buy or use them; users can be fined and devices destroyed.",
 			},
 		],
 		goodGuest: [
@@ -465,28 +485,32 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Monks",
-				text: "Don't touch monks or their robes. By tradition, women don't hand things to monks directly; offerings can be placed on a cloth or tray instead.",
+				text: "Don't touch monks or their robes. By custom, women set things down for a monk or pass them via a man rather than handing them over, though they place alms directly in the bowl.",
 			},
 			{
 				topic: "Head and feet",
 				text: "Avoid touching people's heads, and don't point your feet at people or step over someone sitting on the floor.",
 			},
 			{
-				topic: "Dress",
-				text: "Modest dress is appreciated beyond temples too. Save swimwear for pools and swimming spots, and cover up in towns and villages.",
+				topic: "Modesty",
+				text: "Dress modestly beyond temples too: skip very revealing swimwear even at waterfalls, cover up after swimming, and don't go shirtless. Kissing and hugging in public are seen as impolite.",
 			},
 			{
 				topic: "Rural paths",
-				text: "In rural areas, stick to established paths and roads, and follow local guides; unexploded ordnance remains in parts of the country.",
+				text: "Unexploded ordnance is still a hazard in rural areas across Laos. Keep to main paths and roads, never pick up metal objects, and follow local guides.",
 			},
 			{
 				topic: "Tipping and cash",
-				text: "Tipping isn't traditionally expected, though small tips are appreciated. Carry Lao kip in small notes, as cards are often not accepted outside larger towns.",
+				text: "Tipping isn't traditionally expected, though small tips for good service are appreciated. Carry kip in small notes; cards are mostly accepted only at larger hotels, restaurants and shops.",
+			},
+			{
+				topic: "Photos and vapes",
+				text: "Ask before photographing people, don't photograph military sites, and avoid bridges and airfields. Vapes, heated tobacco and shisha are illegal in Laos, so leave them at home.",
 			},
 		],
 		goodGuest: [
 			"Travel slowly and spread your time beyond the main stops, for example to Nong Khiaw or the Bolaven Plateau.",
-			"Buy textiles and crafts directly from weavers and makers, and avoid souvenirs made from wildlife.",
+			"Buy textiles and crafts directly from weavers and makers, and skip wildlife products, antiques and old Buddha images.",
 			"Choose locally owned guesthouses, guides and eateries.",
 		],
 	},
@@ -496,7 +520,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 		notes: [
 			{
 				topic: "Alms procession",
-				text: "Each dawn, monks walk the old town collecting alms (tak bat). Watch quietly from across the street or at a distance, and never stand in or block their path.",
+				text: "Each dawn, monks walk the old town collecting alms (tak bat). If you're only watching, stay silent, keep at least five meters away and never block their path.",
 			},
 			{
 				topic: "Photography",
@@ -504,7 +528,7 @@ export const CUSTOMS_ASIA: CustomsEntry[] = [
 			},
 			{
 				topic: "Taking part",
-				text: "Only give alms if it is meaningful to you. Dress modestly, remove your shoes, kneel or sit as locals do, stay silent and don't touch the monks.",
+				text: "Only give alms if it's meaningful to you. Cover shoulders, chest and legs, remove your shoes, kneel or sit lower than the monks, stay silent and don't touch them.",
 			},
 			{
 				topic: "Offerings",

@@ -95,6 +95,7 @@ This deploys the synthetic-data version. Going live means deploying in the `live
 - Maps: © OpenStreetMap contributors, OpenFreeMap.
 - City photos: Wikipedia (CC BY-SA).
 - Popularity is Qloo's cultural-attention percentile, not a visitor count.
+- Local customs notes are fact-checked against official tourism, city and transport sources; every note's verdict and sources are listed in [docs/customs-sources/](docs/customs-sources/).
 
 ## License
 
