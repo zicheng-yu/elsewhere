@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { geohashBounds, geohashCenter, geohashEncode, haversineKm } from "../src/engine/geo.ts";
-import { toSearchParams } from "../src/engine/qloo/client.ts";
+import { LiveTransport, QlooClient, QlooError, toSearchParams } from "../src/engine/qloo/client.ts";
 import { compareTraitsOf, heatCellsOf, invalidSignalsOf, toLocality, toPlace, toTaste } from "../src/engine/qloo/normalize.ts";
 import { slimResponse } from "../src/engine/qloo/slim.ts";
 import { buildScore, crowdRelief, proximity } from "../src/engine/scoring.ts";
@@ -154,6 +154,20 @@ describe("real response shapes", () => {
 });
 
 describe("client", () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("stops fetching once the run's subrequest budget is spent, and shares identical requests in flight", async () => {
+		const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ results: [] }), { headers: { "Content-Type": "application/json" } }));
+		vi.stubGlobal("fetch", fetchSpy);
+		const client = new QlooClient({ transport: new LiveTransport({ apiKey: "k", maxFetches: 2 }) });
+		await Promise.all([client.get("/search", { query: "a" }), client.get("/search", { query: "a" })]);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		await client.get("/search", { query: "b" });
+		await expect(client.get("/search", { query: "c" })).rejects.toMatchObject({ kind: "budget" });
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		expect(QlooError).toBeDefined();
+	});
+
 	it("builds deterministic query strings", () => {
 		const params = toSearchParams({ take: 5, "filter.type": "urn:entity:place", empty: "", list: ["a", "b"], none: undefined, skip: [] });
 		expect(params.toString()).toBe("filter.type=urn%3Aentity%3Aplace&list=a%2Cb&take=5");

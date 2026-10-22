@@ -94,9 +94,9 @@ const TOOLS = {
 			level: z.enum(levels),
 			extra_candidates: z
 				.array(z.string())
-				.max(4)
+				.max(3)
 				.optional()
-				.describe("Only for 'country' or 'world': lesser-known cities you believe share the destination's soul; Qloo scores them"),
+				.describe("Only for 'country' or 'world': up to three lesser-known cities you believe share the destination's soul; Qloo scores them"),
 		}),
 	},
 	plan_local: {

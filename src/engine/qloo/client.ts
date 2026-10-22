@@ -14,7 +14,8 @@ export type QlooErrorKind =
 	| "rate_limited"
 	| "server"
 	| "timeout"
-	| "network";
+	| "network"
+	| "budget";
 
 export class QlooError extends Error {
 	readonly kind: QlooErrorKind;
@@ -84,6 +85,12 @@ export interface LiveTransportOptions {
 	baseUrl?: string;
 	timeoutMs?: number;
 	maxRetries?: number;
+	/**
+	 * Most fetch attempts (retries included) this transport may make. A Worker on
+	 * the Free plan gets 50 external subrequests per invocation, shared with the
+	 * LLM's calls; past this budget optional lookups fail and the journey degrades.
+	 */
+	maxFetches?: number;
 }
 
 /** Calls the real Qloo API. GET only, key in the X-Api-Key header. */
@@ -93,6 +100,8 @@ export class LiveTransport implements QlooTransport {
 	#baseUrl: string;
 	#timeoutMs: number;
 	#maxRetries: number;
+	#maxFetches: number;
+	#fetches = 0;
 
 	constructor(options: LiveTransportOptions) {
 		this.#apiKey = options.apiKey;
@@ -100,12 +109,15 @@ export class LiveTransport implements QlooTransport {
 		// One slow call should not stall a whole journey: fail fast, retry once.
 		this.#timeoutMs = options.timeoutMs ?? 10_000;
 		this.#maxRetries = options.maxRetries ?? 1;
+		this.#maxFetches = options.maxFetches ?? Number.POSITIVE_INFINITY;
 	}
 
 	async get(path: string, params: URLSearchParams): Promise<unknown> {
 		const query = params.toString();
 		const url = `${this.#baseUrl}${path}${query ? `?${query}` : ""}`;
 		for (let attempt = 0; ; attempt++) {
+			if (this.#fetches >= this.#maxFetches) throw new QlooError("budget", 0, `Qloo request budget for this run is spent: ${path}`);
+			this.#fetches++;
 			let response: Response;
 			try {
 				response = await fetch(url, {

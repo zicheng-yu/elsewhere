@@ -89,7 +89,8 @@ function errorEvent(error: unknown): AgentEvent {
 			: { type: "error", message: error.message, recoverable: true };
 	}
 	if (error instanceof QlooError) {
-		return { type: "error", message: `Qloo request failed (${error.kind}). Please try again shortly.`, recoverable: true };
+		const message = error.kind === "budget" ? "This journey needed more Qloo lookups than one run allows. Try fewer zoom levels." : `Qloo request failed (${error.kind}). Please try again shortly.`;
+		return { type: "error", message, recoverable: true };
 	}
 	if (error instanceof PlanTargetError || error instanceof FollowUpUnavailableError || error instanceof BudgetExhaustedError) {
 		return { type: "error", message: error.message, recoverable: true };

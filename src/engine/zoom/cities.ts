@@ -129,7 +129,7 @@ export async function findCityTwins(
 	// What the traveler would actually do there. The places also vouch for the
 	// destination: an entry whose sights all sit in another city is mislocated.
 	const highlightSignals = signalIds.length > 0 ? signalIds : hotspot.crowdedSpots.map((s) => s.id);
-	const contenders = items.slice(0, maxResults + 2);
+	const contenders = items.slice(0, maxResults + 1);
 	await Promise.all(
 		contenders.map(async (item) => {
 			const places = await api
@@ -150,9 +150,9 @@ export async function findCityTwins(
 		item.highlights.length === 0 || item.highlights.some((p) => !p.city || matchScore(item.city.name, p.city) >= 0.6);
 	const top = contenders.filter(located).slice(0, maxResults);
 
-	// The character each leading twin shares with home.
+	// The character the leading twin shares with home.
 	await Promise.all(
-		top.slice(0, 2).map(async (item) => {
+		top.slice(0, 1).map(async (item) => {
 			const traits = await api.compare([hotspot.destinationId ?? ""], [item.city.id], 12).catch(() => []);
 			item.sharedTraits = [...new Set([...traits, ...item.sharedTraits])].slice(0, 4);
 		}),

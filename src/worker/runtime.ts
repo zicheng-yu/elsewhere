@@ -52,7 +52,8 @@ export function llmFor(env: Env, modes: ResolvedModes, appUrl?: string): { confi
 export function createApi(env: Env, modes: ResolvedModes, onEvidence?: (evidence: Evidence) => void, options: { cache?: boolean } = {}): QlooApi {
 	if (modes.qloo === "live" && modes.qlooKey) {
 		const client = new QlooClient({
-			transport: new LiveTransport({ apiKey: modes.qlooKey }),
+			// 40 Qloo fetches plus the agent's model calls stay under the Free plan's 50 subrequests.
+			transport: new LiveTransport({ apiKey: modes.qlooKey, maxFetches: 40 }),
 			// Autocomplete skips KV: one write per keystroke would eat the free plan's daily write quota.
 			cache: options.cache === false ? undefined : new KvCache(env.QLOO_CACHE),
 			concurrency: 5,
