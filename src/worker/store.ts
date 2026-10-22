@@ -1,5 +1,6 @@
 /** Journeys in D1 (the snapshot behind share links, the agent conversation, a replayable event log) and the LLM spending ledger. */
-import type { Budget, ChatMessage } from "../engine/agent/llm.ts";
+import type { ChatMessage, TurnBudget } from "../engine/agent/llm.ts";
+import type { D1Like } from "../engine/qloo/cache.ts";
 import type { AgentEvent } from "../shared/events.ts";
 import type { JourneySnapshot } from "../shared/types.ts";
 
@@ -31,16 +32,30 @@ const SPEND_SCHEMA = `CREATE TABLE IF NOT EXISTS llm_spend (
 	tokens INTEGER NOT NULL DEFAULT 0
 )`;
 
+/** Model calls per visitor per day: one visitor cannot spend the whole day's budget. */
+const TURNS_SCHEMA = `CREATE TABLE IF NOT EXISTS llm_turns (
+	day TEXT NOT NULL,
+	visitor TEXT NOT NULL,
+	turns INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (day, visitor)
+)`;
+
+/** The slice of D1 the store uses; structural, so tests can run it over in-memory SQLite. */
+export type StoreDb = D1Like & {
+	batch<T = Record<string, unknown>>(statements: unknown[]): Promise<{ results: T[] }[]>;
+};
+export type LedgerDb = StoreDb;
+
 /** Databases whose tables already exist in this isolate: D1 on the Free plan allows 50 queries per invocation. */
 const ready = new WeakSet<object>();
 
-async function ensureSchema(db: D1Database): Promise<void> {
+async function ensureSchema(db: StoreDb): Promise<void> {
 	if (ready.has(db)) return;
-	await db.batch([db.prepare(SCHEMA), db.prepare(SPEND_SCHEMA)]);
+	await db.batch([db.prepare(SCHEMA), db.prepare(SPEND_SCHEMA), db.prepare(TURNS_SCHEMA)]);
 	ready.add(db);
 }
 
-export async function saveJourney(db: D1Database, journey: StoredJourney): Promise<void> {
+export async function saveJourney(db: StoreDb, journey: StoredJourney): Promise<void> {
 	await ensureSchema(db);
 	const now = Date.now();
 	await db
@@ -64,7 +79,7 @@ export async function saveJourney(db: D1Database, journey: StoredJourney): Promi
 		.run();
 }
 
-export async function loadJourney(db: D1Database, id: string): Promise<StoredJourney | undefined> {
+export async function loadJourney(db: StoreDb, id: string): Promise<StoredJourney | undefined> {
 	await ensureSchema(db);
 	const row = await db
 		.prepare("SELECT snapshot, conversation, events FROM journeys WHERE id = ?1")
@@ -83,14 +98,17 @@ export interface SpendLimits {
 	dailyUsd: number;
 	/** Stop calling the model for good past this many US dollars (until the cap is raised). */
 	totalUsd: number;
+	/** Stop calling the model for this visitor for the rest of the UTC day past this many turns. */
+	turnsPerVisitor?: number;
 }
 
 /**
- * A spending ledger in D1: every model call records its cost, and no new call
- * starts once today's or the all-time spend reaches its cap. The OpenRouter
- * key's own credit limit remains the outer backstop.
+ * A spending ledger in D1: every model call records its cost, and no new turn
+ * starts once today's or the all-time spend reaches its cap, or once the visitor
+ * has used their turns for the day. The OpenRouter key's own credit limit
+ * remains the outer backstop.
  */
-export function d1Budget(db: D1Database, limits: SpendLimits): Budget & { spent(): Promise<{ today: number; total: number }> } {
+export function d1Budget(db: LedgerDb, limits: SpendLimits): TurnBudget & { spent(): Promise<{ today: number; total: number }> } {
 	const today = () => new Date().toISOString().slice(0, 10);
 	const spent = async () => {
 		await ensureSchema(db);
@@ -100,21 +118,38 @@ export function d1Budget(db: D1Database, limits: SpendLimits): Budget & { spent(
 			.first<{ today: number | null; total: number | null }>();
 		return { today: row?.today ?? 0, total: row?.total ?? 0 };
 	};
+	const record = async ({ costUsd, tokens }: { costUsd: number; tokens: number }) => {
+		await ensureSchema(db);
+		await db
+			.prepare(
+				`INSERT INTO llm_spend (day, cost_usd, calls, tokens) VALUES (?1, ?2, 1, ?3)
+				 ON CONFLICT(day) DO UPDATE SET cost_usd = cost_usd + ?2, calls = calls + 1, tokens = tokens + ?3`,
+			)
+			.bind(today(), costUsd, tokens)
+			.run();
+	};
 	return {
 		spent,
+		record,
 		async allow() {
 			const { today: day, total } = await spent();
 			return day < limits.dailyUsd && total < limits.totalUsd;
 		},
-		async record({ costUsd, tokens }) {
-			await ensureSchema(db);
-			await db
+		async allowTurn(visitor: string) {
+			const { today: day, total } = await spent();
+			if (day >= limits.dailyUsd || total >= limits.totalUsd) return { ok: false, reason: "budget" };
+			const limit = limits.turnsPerVisitor;
+			if (limit === undefined || limit <= 0) return { ok: true };
+			// One statement counts the turn and hands back the new count.
+			const row = await db
 				.prepare(
-					`INSERT INTO llm_spend (day, cost_usd, calls, tokens) VALUES (?1, ?2, 1, ?3)
-					 ON CONFLICT(day) DO UPDATE SET cost_usd = cost_usd + ?2, calls = calls + 1, tokens = tokens + ?3`,
+					`INSERT INTO llm_turns (day, visitor, turns) VALUES (?1, ?2, 1)
+					 ON CONFLICT(day, visitor) DO UPDATE SET turns = turns + 1
+					 RETURNING turns`,
 				)
-				.bind(today(), costUsd, tokens)
-				.run();
+				.bind(today(), visitor)
+				.first<{ turns: number }>();
+			return (row?.turns ?? 1) <= limit ? { ok: true } : { ok: false, reason: "turns" };
 		},
 	};
 }

@@ -36,6 +36,8 @@ export default defineConfig(({ mode }) => {
 				// Spending caps in US dollars, enforced before every model call (ledger in D1).
 				LLM_DAILY_USD: bindings.text("0.50"),
 				LLM_TOTAL_USD: bindings.text("5"),
+				// Agent turns one visitor may start per UTC day; past it the scripted planner answers.
+				LLM_TURNS_PER_VISITOR: bindings.text("40"),
 				// Model calls per agent turn (each tool round trip is one call).
 				LLM_MAX_CALLS: bindings.text("5"),
 				// Journeys, share links, replays, the LLM spending ledger and the private Qloo response cache.

@@ -18,7 +18,12 @@ const finish = (reason: string, cost: number) => ({ model: "test/model", choices
 
 function budget(allowed = true): Budget & { spent: number[] } {
 	const spent: number[] = [];
-	return { spent, allow: async () => allowed, record: async ({ costUsd }) => void spent.push(costUsd) };
+	return {
+		spent,
+		allow: async () => allowed,
+		allowTurn: async () => ({ ok: allowed, reason: allowed ? undefined : "budget" }),
+		record: async ({ costUsd }) => void spent.push(costUsd),
+	};
 }
 
 function context(): { ctx: ToolContext; events: AgentEvent[]; state: JourneyState } {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { D1Cache } from "../src/engine/qloo/cache.ts";
 import { QlooClient, type QlooTransport } from "../src/engine/qloo/client.ts";
+import { d1Budget, type LedgerDb } from "../src/worker/store.ts";
 import { sqliteD1 } from "./fixtures/sqlite-d1.ts";
 
 describe("D1 cache", () => {
@@ -63,5 +64,28 @@ describe("D1 cache", () => {
 		};
 		expect(await run()).toMatchObject({ lookups: 4, hits: 0, writes: 4 });
 		expect(await run()).toEqual({ lookups: 4, hits: 4, writes: 0, queries: 2 });
+	});
+});
+
+describe("AI spending guard", () => {
+	const ledger = () => sqliteD1() as unknown as LedgerDb & { database: { prepare(sql: string): { run(...values: unknown[]): unknown } } };
+
+	it("caps a visitor's turns for the day without capping anyone else", async () => {
+		const db = ledger();
+		const budget = d1Budget(db, { dailyUsd: 0.5, totalUsd: 5, turnsPerVisitor: 3 });
+		for (let i = 0; i < 3; i++) expect(await budget.allowTurn("alice")).toEqual({ ok: true });
+		expect(await budget.allowTurn("alice")).toEqual({ ok: false, reason: "turns" });
+		expect(await budget.allowTurn("bob")).toEqual({ ok: true });
+		// A new UTC day resets the count.
+		db.database.prepare("UPDATE llm_turns SET day = '2000-01-01'").run();
+		expect(await budget.allowTurn("alice")).toEqual({ ok: true });
+	});
+
+	it("stops calling the model once the day's spend reaches its cap", async () => {
+		const db = ledger();
+		const budget = d1Budget(db, { dailyUsd: 0.5, totalUsd: 5 });
+		await budget.record({ costUsd: 0.6, tokens: 1000 });
+		expect(await budget.allow()).toBe(false);
+		expect(await budget.allowTurn("alice")).toEqual({ ok: false, reason: "budget" });
 	});
 });

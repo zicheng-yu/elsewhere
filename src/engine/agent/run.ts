@@ -2,7 +2,7 @@
 import type { Emit } from "../../shared/events.ts";
 import type { PlanPrefs, PlanTargetRef } from "../../shared/types.ts";
 import type { QlooApi } from "../qloo/endpoints.ts";
-import { BudgetExhaustedError, runLlmTurn, type Budget, type ChatMessage, type LlmConfig, type TurnUsage } from "./llm.ts";
+import { BudgetExhaustedError, runLlmTurn, type ChatMessage, type LlmConfig, type TurnBudget, type TurnUsage } from "./llm.ts";
 import { describeRequest } from "./prompt.ts";
 import { runScriptedJourney, runScriptedPlan } from "./scripted.ts";
 import type { JourneyState, ToolContext } from "./tools.ts";
@@ -12,9 +12,11 @@ export interface AgentDeps {
 	emit: Emit;
 	state: JourneyState;
 	/** Present only when the LLM agent is configured. */
-	llm?: { config: LlmConfig; budget: Budget };
+	llm?: { config: LlmConfig; budget: TurnBudget };
 	history?: ChatMessage[];
 	signal?: AbortSignal;
+	/** Pseudonymous visitor key for the per-visitor turn cap. */
+	visitor?: string;
 }
 
 export interface AgentOutcome {
@@ -23,11 +25,14 @@ export interface AgentOutcome {
 }
 
 /** Tell the traveler, in the agent trace, why the deterministic planner is answering instead. */
-function pausedNotice(emit: Emit): void {
+function pausedNotice(emit: Emit, reason?: string): void {
 	emit({
 		type: "trace.step",
 		id: `step-${crypto.randomUUID().slice(0, 8)}`,
-		label: "AI agent paused: its spending cap is reached, so the scripted planner answers",
+		label:
+			reason === "turns"
+				? "AI agent paused: this visitor's daily AI turns are used up, so the scripted planner answers"
+				: "AI agent paused: its spending cap is reached, so the scripted planner answers",
 		status: "done",
 	});
 }
@@ -35,8 +40,10 @@ function pausedNotice(emit: Emit): void {
 /** The LLM agent when it is configured and within budget; otherwise the scripted planner. */
 async function agentFor(deps: AgentDeps): Promise<AgentDeps["llm"]> {
 	if (!deps.llm) return undefined;
-	if (await deps.llm.budget.allow()) return deps.llm;
-	pausedNotice(deps.emit);
+	const { budget } = deps.llm;
+	const allowance: { ok: boolean; reason?: "budget" | "turns" } = deps.visitor !== undefined ? await budget.allowTurn(deps.visitor) : { ok: await budget.allow() };
+	if (allowance.ok) return deps.llm;
+	pausedNotice(deps.emit, allowance.reason);
 	return undefined;
 }
 

@@ -41,7 +41,7 @@ export function BaselinePanel({ request }: { request?: TripRequest }) {
 				<div className="space-y-2">
 					<p className="text-xs text-muted">Same model, no Qloo tools, no evidence:</p>
 					<div className="max-h-72 space-y-2 overflow-auto rounded-2xl bg-wash p-3 text-sm">
-						{state.text.split(/\n{2,}/).map((paragraph) => (
+						{state.text.replace(/\*\*/g, "").split(/\n{2,}/).map((paragraph) => (
 							<p key={paragraph.slice(0, 24)}>{paragraph}</p>
 						))}
 					</div>

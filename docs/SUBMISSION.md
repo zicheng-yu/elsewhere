@@ -1,6 +1,6 @@
-# Devpost submission (draft)
+# Devpost submission
 
-> Placeholders in [brackets] are filled in once live Qloo data and the LLM agent are switched on.
+The app is live at https://elsewhere.zichengyu.com with live Qloo data and the LLM agent. Every number below comes from live runs.
 
 ## Tagline
 
@@ -8,7 +8,7 @@ Same soul, fewer crowds: an agent that finds your taste-matched alternative to a
 
 ## Inspiration
 
-Overtourism is mostly a concentration problem. Japan's Tourism Agency describes it as visitors bunching into specific places at specific times. Venice charges day-trippers an access fee. Fodor's "No List" grows every year. Meanwhile, one in three travelers has already booked a "dupe" destination (Expedia, Unpack '24), and most say they want deeper contact with local culture.
+Overtourism is mostly a concentration problem. Japan's Tourism Agency describes it as visitors bunching into specific places at specific times. Venice charges day-trippers an access fee, and Montmartre now draws more visitors to Sacré-Cœur than the Eiffel Tower. Travelers are already acting on it: in Expedia's Unpack '24 survey, one in three had booked a "dupe" destination, and 36% named deeper contact with local culture as one of their reasons.
 
 The usual "alternatives to Kyoto" lists are generic, and they come from the same sources that made Kyoto famous. A good alternative is personal. If you love Studio Ghibli and quiet gardens, your Fushimi Inari twin is a different place than it is for a night owl who loves Wong Kar-wai. Qloo's taste graph can tell those two travelers apart; a general-purpose model on its own cannot.
 
@@ -26,7 +26,7 @@ Every card shows a transparent **Dupe Score**, which combines:
 - character, from the Qloo destination genres a twin shares with the original;
 - your taste;
 - crowd relief, from Qloo popularity percentiles;
-- proximity or season fit, from Qloo's peak-season and best-month tags.
+- distance, and season fit wherever Qloo has month tags for the place.
 
 An evidence drawer lists every Qloo request behind the results.
 
@@ -34,7 +34,7 @@ Choose **Go like a local** and the agent builds the rest of the trip:
 - where to stay, from Qloo's taste heatmap;
 - a day-by-day plan of taste-matched places;
 - local customs;
-- "be a good guest" notes, including a "visit gently" flag for small communities.
+- responsible-travel notes for the places it sends you to.
 
 ## How we built it
 
@@ -56,6 +56,15 @@ Choose **Go like a local** and the agent builds the rest of the trip:
 - **Quality:**
   - Engine tests run against a synthetic transport that mimics Qloo's parameters.
   - An eval script runs eight featured hotspots with four taste profiles each. It checks that each level returns the right kind of place, measures crowd relief, and measures how often the top pick changes with taste. On live Qloo data all 64 level checks pass, the alternatives average 88% crowd relief, and the top pick changes with the traveler's taste in 6 of 16 scenario-levels.
+
+## Why it needs Qloo
+
+Take Qloo away and Elsewhere stops working, and we built the proof instead of asserting it:
+
+- **The alternatives come from Qloo.** Crowded spots, their quieter twins, day-trip towns, twin cities, shared genres and crowd relief are all Qloo entities, affinities and popularity percentiles. No list of ours decides them.
+- **The agent's tools are Qloo queries.** `resolve_trip`, `find_dupes` and `plan_local` run the Qloo calls; the model only chooses which ones and what to say.
+- **The same question, asked without Qloo.** The "why not just ask an LLM?" panel sends the same request and the same model (Haiku 5.5) to OpenRouter with no Qloo access. The result is a generic list of well-known suggestions; it cannot see which quieter place shares this traveler's taste, and it cannot tell you that your Pinot-and-vermouth bars cluster in one Kyoto neighbourhood.
+- **The numbers are Qloo's.** A Dupe Score card cites the Qloo fields behind it, and the evidence drawer lists every request the run made.
 
 ## Challenges we ran into
 
@@ -90,7 +99,11 @@ Qloo Insights API · Claude Haiku 5.5 via OpenRouter · Cloudflare Workers, D1 �
 
 ## Testing instructions
 
-Open https://elsewhere.zichengyu.com. No login is needed.
-1. Run a featured journey, such as "Kyoto in April". Swap the taste profile to see the picks change.
-2. Choose "Go like a local" on any card to get a plan.
-3. Open the evidence drawer from the agent trace to see every Qloo request.
+Open https://elsewhere.zichengyu.com. No login, no setup, and the agent is on live Qloo data.
+1. Run a featured journey such as "Kyoto in April" (the featured ones are warm and answer in seconds).
+2. Swap the taste profile before running and watch the picks change; or type your own destination, month, must-sees and favourites.
+3. Choose "Go like a local" on a card for a day-by-day plan with local customs.
+4. Ask a follow-up such as "even quieter, and add a jazz bar".
+5. Open "Why not just ask an LLM?" for the same request answered by the same model without Qloo.
+6. Open the evidence drawer from the agent trace: every Qloo request behind the run, with its parameters and result count.
+7. Share a journey with the share link; it replays without running anything again.

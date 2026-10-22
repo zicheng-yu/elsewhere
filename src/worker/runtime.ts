@@ -1,4 +1,4 @@
-import { DEFAULT_FALLBACK_MODELS, DEFAULT_MODEL, type Budget, type LlmConfig } from "../engine/agent/llm.ts";
+import { DEFAULT_FALLBACK_MODELS, DEFAULT_MODEL, type LlmConfig, type TurnBudget } from "../engine/agent/llm.ts";
 import { QlooApi } from "../engine/qloo/endpoints.ts";
 import { D1Cache } from "../engine/qloo/cache.ts";
 import { LiveTransport, QlooClient } from "../engine/qloo/client.ts";
@@ -32,7 +32,7 @@ function numberOr(value: string | undefined, fallback: number): number {
 }
 
 /** The agent's model settings and spending guard, or nothing when the agent is off. */
-export function llmFor(env: Env, modes: ResolvedModes, appUrl?: string): { config: LlmConfig; budget: Budget } | undefined {
+export function llmFor(env: Env, modes: ResolvedModes, appUrl?: string): { config: LlmConfig; budget: TurnBudget } | undefined {
 	if (modes.agent !== "llm" || !modes.llmKey) return undefined;
 	const fallbacks = env.LLM_FALLBACK_MODELS?.split(",").map((m) => m.trim()).filter(Boolean);
 	return {
@@ -45,7 +45,11 @@ export function llmFor(env: Env, modes: ResolvedModes, appUrl?: string): { confi
 			reasoningEffort: "none",
 			appUrl,
 		},
-		budget: d1Budget(env.DB, { dailyUsd: numberOr(env.LLM_DAILY_USD, 0.5), totalUsd: numberOr(env.LLM_TOTAL_USD, 5) }),
+		budget: d1Budget(env.DB, {
+			dailyUsd: numberOr(env.LLM_DAILY_USD, 0.5),
+			totalUsd: numberOr(env.LLM_TOTAL_USD, 5),
+			turnsPerVisitor: numberOr(env.LLM_TURNS_PER_VISITOR, 40),
+		}),
 	};
 }
 

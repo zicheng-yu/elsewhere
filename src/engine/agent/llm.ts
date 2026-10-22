@@ -34,6 +34,18 @@ export interface LlmConfig {
 export interface Budget {
 	allow(): Promise<boolean>;
 	record(spend: { costUsd: number; tokens: number; model?: string }): Promise<void>;
+	/** Checked once per agent turn: the visitor's daily allowance as well as the budget. */
+	allowTurn(visitor: string): Promise<TurnAllowance>;
+}
+
+export interface TurnAllowance {
+	ok: boolean;
+	reason?: "budget" | "turns";
+}
+
+/** A budget that can also cap a visitor's turns for the day. */
+export interface TurnBudget extends Budget {
+	allowTurn(visitor: string): Promise<TurnAllowance>;
 }
 
 export interface ToolCall {
@@ -349,10 +361,14 @@ export async function runBaseline(config: LlmConfig, budget: Budget, request: Tr
 			max_tokens: 700,
 			reasoning: { effort: config.reasoningEffort },
 			messages: [
-				{ role: "system", content: "You are a helpful travel assistant. Answer from your own knowledge, concisely, in plain sentences." },
+				{
+					role: "system",
+					content:
+						"You are a helpful travel assistant. Answer from your own knowledge only. No preamble and no markdown: no asterisks, headings or bullets. Give exactly three numbered suggestions in two sentences each, and say where each is: same city, day trip or another city.",
+				},
 				{
 					role: "user",
-					content: `${describeRequest(request)}\n\nSuggest three less crowded alternatives that match my taste, at whatever distance makes sense: other spots in the same city, a day trip, or another city. For each, explain why in one or two sentences.`,
+					content: `${describeRequest(request)}\n\nSuggest three less crowded alternatives that match my taste, at whatever distance makes sense. Start with the first suggestion.`,
 				},
 			],
 		}),

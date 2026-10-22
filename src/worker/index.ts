@@ -119,6 +119,15 @@ function flushCache(c: AppContext, api: QlooApi, journeyId: string): void {
 	);
 }
 
+/**
+ * A pseudonymous key for the visitor, used by the per-visitor cap on AI turns:
+ * the client address is hashed, never stored as such.
+ */
+async function visitorKey(c: AppContext): Promise<string> {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(clientIp(c.req.raw)));
+	return [...new Uint8Array(digest).slice(0, 8)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function rateLimited(c: AppContext): Promise<boolean> {
 	const { success } = await c.env.RATE_LIMITER.limit({ key: clientIp(c.req.raw) });
 	return !success;
@@ -223,7 +232,7 @@ app.post("/journeys", async (c) => {
 		const started = Date.now();
 		let outcome: Awaited<ReturnType<typeof startJourney>> = {};
 		try {
-			outcome = await startJourney({ api, emit, state, llm: agentFor(c, modes), signal });
+			outcome = await startJourney({ api, emit, state, llm: agentFor(c, modes), signal, visitor: await visitorKey(c) });
 		} finally {
 			flushCache(c, api, journeyId);
 			if (state.hotspot) {
@@ -278,7 +287,7 @@ app.post("/journeys/:id/plan", async (c) => {
 		let outcome: Awaited<ReturnType<typeof planJourney>> = { history: journey.conversation };
 		try {
 			outcome = await planJourney(
-				{ api, emit, state, llm: agentFor(c, modes), history: journey.conversation, signal },
+				{ api, emit, state, llm: agentFor(c, modes), history: journey.conversation, signal, visitor: await visitorKey(c) },
 				parsed.data.target,
 				parsed.data.prefs,
 			);
@@ -324,7 +333,7 @@ app.post("/journeys/:id/messages", async (c) => {
 		let outcome: Awaited<ReturnType<typeof continueJourney>> = { history: journey.conversation };
 		try {
 			outcome = await continueJourney(
-				{ api, emit, state, llm: agentFor(c, modes), history: journey.conversation, signal },
+				{ api, emit, state, llm: agentFor(c, modes), history: journey.conversation, signal, visitor: await visitorKey(c) },
 				parsed.data.message,
 			);
 		} finally {
@@ -348,7 +357,7 @@ app.post("/baseline", async (c) => {
 		return c.json({ available: false, reason: "The LLM-only comparison runs once the language model is configured." });
 	}
 	if (await rateLimited(c)) return c.json({ error: "rate_limited" }, 429);
-	const cacheKey = `baseline:v2:${llm.config.model}:${JSON.stringify(parsed.data)}`;
+	const cacheKey = `baseline:v3:${llm.config.model}:${JSON.stringify(parsed.data)}`;
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cacheKey));
 	const key = `baseline:${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
 	const cache = new D1Cache(c.env.DB, { maxQueries: 4 });

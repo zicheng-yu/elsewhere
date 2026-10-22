@@ -3,4 +3,6 @@
 interface Env {
 	QLOO_API_KEY?: string;
 	OPENROUTER_API_KEY?: string;
+	/** Model calls a visitor may make per UTC day (text binding, LLM_TURNS_PER_VISITOR). */
+	LLM_TURNS_PER_VISITOR?: string;
 }

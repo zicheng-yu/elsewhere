@@ -41,6 +41,7 @@ export interface D1Like {
 export interface D1StatementLike {
 	bind(...values: unknown[]): D1StatementLike;
 	all<T = Record<string, unknown>>(): Promise<{ results: T[] }>;
+	first<T = Record<string, unknown>>(): Promise<T | null>;
 	run(): Promise<unknown>;
 }
 
