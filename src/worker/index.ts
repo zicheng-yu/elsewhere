@@ -5,7 +5,9 @@ import { BudgetExhaustedError, LlmError, runBaseline } from "../engine/agent/llm
 import { continueJourney, FollowUpUnavailableError, planJourney, startJourney } from "../engine/agent/run.ts";
 import type { JourneyState } from "../engine/agent/tools.ts";
 import { PlanTargetError } from "../engine/local.ts";
+import { D1Cache } from "../engine/qloo/cache.ts";
 import { QlooError } from "../engine/qloo/client.ts";
+import type { QlooApi } from "../engine/qloo/endpoints.ts";
 import { ResolveError } from "../engine/resolve.ts";
 import type { AgentEvent, Emit } from "../shared/events.ts";
 import { PERSONAS, SCENARIOS } from "../shared/scenarios.ts";
@@ -51,6 +53,12 @@ const MessageSchema = z.object({ message: Text(1000) });
 
 function publicModes(modes: ResolvedModes): RunModes {
 	return { qloo: modes.qloo, agent: modes.agent, model: modes.model };
+}
+
+/** The run's modes. `?planner=scripted` asks for the deterministic planner, which costs no model calls (cache warming, checks). */
+function modesFor(c: AppContext): ResolvedModes {
+	const modes = resolveModes(c.env);
+	return c.req.query("planner") === "scripted" ? { ...modes, agent: "scripted", model: undefined } : modes;
 }
 
 /** The agent's model settings and spending guard for this request, when the agent is on. */
@@ -99,6 +107,16 @@ function errorEvent(error: unknown): AgentEvent {
 		return { type: "error", message: "The AI agent is unavailable right now. Please try again shortly.", recoverable: true };
 	}
 	return { type: "error", message: "Something went wrong while planning. Please try again.", recoverable: true };
+}
+
+/** Writes the run's new Qloo responses to the cache once the response is done. */
+function flushCache(c: AppContext, api: QlooApi, journeyId: string): void {
+	c.executionCtx.waitUntil(
+		api.client
+			.flush()
+			.then((stats) => stats && log("info", "qloo cache", { journeyId, stats }))
+			.catch(() => undefined),
+	);
 }
 
 async function rateLimited(c: AppContext): Promise<boolean> {
@@ -191,7 +209,7 @@ app.post("/journeys", async (c) => {
 	if (!parsed.success) return c.json({ error: "invalid_request", issues: parsed.error.issues.slice(0, 5) }, 400);
 	if (await rateLimited(c)) return c.json({ error: "rate_limited", message: "Too many journeys at once. Try again in a minute." }, 429);
 
-	const modes = resolveModes(c.env);
+	const modes = modesFor(c);
 	const journeyId = crypto.randomUUID();
 	const runId = crypto.randomUUID();
 	const createdAt = Date.now();
@@ -207,6 +225,7 @@ app.post("/journeys", async (c) => {
 		try {
 			outcome = await startJourney({ api, emit, state, llm: agentFor(c, modes), signal });
 		} finally {
+			flushCache(c, api, journeyId);
 			if (state.hotspot) {
 				await saveJourney(c.env.DB, {
 					snapshot: snapshotOf(state, publicModes(modes), createdAt, transcript.text()),
@@ -239,7 +258,7 @@ app.post("/journeys/:id/plan", async (c) => {
 	if (!journey?.snapshot.hotspot) return c.json({ error: "not_found" }, 404);
 	if (await rateLimited(c)) return c.json({ error: "rate_limited" }, 429);
 
-	const modes = resolveModes(c.env);
+	const modes = modesFor(c);
 	const { snapshot } = journey;
 	const state: JourneyState = {
 		journeyId: snapshot.id,
@@ -264,6 +283,7 @@ app.post("/journeys/:id/plan", async (c) => {
 				parsed.data.prefs,
 			);
 		} finally {
+			flushCache(c, api, snapshot.id);
 			await saveJourney(c.env.DB, {
 				snapshot: snapshotOf(state, snapshot.modes, snapshot.createdAt, transcript.text()),
 				conversation: outcome.history,
@@ -308,6 +328,7 @@ app.post("/journeys/:id/messages", async (c) => {
 				parsed.data.message,
 			);
 		} finally {
+			flushCache(c, api, snapshot.id);
 			await saveJourney(c.env.DB, {
 				snapshot: snapshotOf(state, snapshot.modes, snapshot.createdAt, transcript.text()),
 				conversation: outcome.history,
@@ -330,11 +351,13 @@ app.post("/baseline", async (c) => {
 	const cacheKey = `baseline:v2:${llm.config.model}:${JSON.stringify(parsed.data)}`;
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cacheKey));
 	const key = `baseline:${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
-	const cached = await c.env.QLOO_CACHE.get(key);
-	if (cached) return c.json({ available: true, text: cached, cached: true });
+	const cache = new D1Cache(c.env.DB, { maxQueries: 4 });
+	const cached = await cache.get(key);
+	if (typeof cached === "string") return c.json({ available: true, text: cached, cached: true });
 	try {
 		const { text } = await runBaseline(llm.config, llm.budget, parsed.data);
-		c.executionCtx.waitUntil(c.env.QLOO_CACHE.put(key, text, { expirationTtl: 30 * 24 * 3600 }));
+		await cache.put(key, text, 30 * 24 * 3600);
+		c.executionCtx.waitUntil(cache.flush());
 		return c.json({ available: true, text, cached: false, model: llm.config.model });
 	} catch (error) {
 		if (error instanceof BudgetExhaustedError) return c.json({ available: false, reason: error.message });

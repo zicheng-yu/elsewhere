@@ -38,6 +38,8 @@ export interface QlooTransport {
 export interface QlooCache {
 	get(key: string): Promise<unknown | undefined>;
 	put(key: string, value: unknown, ttlSeconds: number): Promise<void>;
+	/** Writes anything the cache buffered; called once a run is over. */
+	flush?(): Promise<unknown>;
 }
 
 /** Deterministic query string: sorted keys, arrays joined with commas, empty values dropped. */
@@ -119,11 +121,14 @@ export class LiveTransport implements QlooTransport {
 			if (this.#fetches >= this.#maxFetches) throw new QlooError("budget", 0, `Qloo request budget for this run is spent: ${path}`);
 			this.#fetches++;
 			let response: Response;
+			let data: unknown;
 			try {
 				response = await fetch(url, {
 					headers: { "X-Api-Key": this.#apiKey, Accept: "application/json" },
 					signal: AbortSignal.timeout(this.#timeoutMs),
 				});
+				// The timeout covers the body too: a slow response can stall while it streams.
+				if (response.ok) data = await response.json();
 			} catch (error) {
 				const timedOut = error instanceof Error && error.name === "TimeoutError";
 				if (attempt < this.#maxRetries) {
@@ -136,7 +141,7 @@ export class LiveTransport implements QlooTransport {
 					timedOut ? `Qloo request timed out: ${path}` : `Qloo request failed: ${path}`,
 				);
 			}
-			if (response.ok) return await response.json();
+			if (response.ok) return data;
 
 			const kind = kindFromStatus(response.status);
 			const retryable = kind === "rate_limited" || kind === "server";
@@ -182,7 +187,7 @@ export interface QlooClientOptions {
 }
 
 /** Bump when the cached response shape changes. */
-const CACHE_VERSION = "v3";
+export const CACHE_VERSION = "v4";
 
 /**
  * Adds trimming, caching, request coalescing, concurrency limits and an
@@ -210,6 +215,11 @@ export class QlooClient {
 		this.#limit = createLimiter(options.concurrency ?? 5);
 		this.#onEvidence = options.onEvidence;
 		this.#trim = options.trim ?? true;
+	}
+
+	/** Lets a buffering cache write what it holds; returns its statistics, if it keeps any. */
+	async flush(): Promise<unknown> {
+		return this.#cache?.flush?.();
 	}
 
 	async get(path: string, params: QlooParams, note?: string): Promise<unknown> {

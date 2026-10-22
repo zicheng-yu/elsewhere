@@ -1,4 +1,4 @@
-/** Journeys in D1: the snapshot behind share links, the agent conversation, and a replayable event log. */
+/** Journeys in D1 (the snapshot behind share links, the agent conversation, a replayable event log) and the LLM spending ledger. */
 import type { Budget, ChatMessage } from "../engine/agent/llm.ts";
 import type { AgentEvent } from "../shared/events.ts";
 import type { JourneySnapshot } from "../shared/types.ts";
@@ -24,8 +24,20 @@ const SCHEMA = `CREATE TABLE IF NOT EXISTS journeys (
 	events TEXT
 )`;
 
+const SPEND_SCHEMA = `CREATE TABLE IF NOT EXISTS llm_spend (
+	day TEXT PRIMARY KEY,
+	cost_usd REAL NOT NULL DEFAULT 0,
+	calls INTEGER NOT NULL DEFAULT 0,
+	tokens INTEGER NOT NULL DEFAULT 0
+)`;
+
+/** Databases whose tables already exist in this isolate: D1 on the Free plan allows 50 queries per invocation. */
+const ready = new WeakSet<object>();
+
 async function ensureSchema(db: D1Database): Promise<void> {
-	await db.prepare(SCHEMA).run();
+	if (ready.has(db)) return;
+	await db.batch([db.prepare(SCHEMA), db.prepare(SPEND_SCHEMA)]);
+	ready.add(db);
 }
 
 export async function saveJourney(db: D1Database, journey: StoredJourney): Promise<void> {
@@ -66,13 +78,6 @@ export async function loadJourney(db: D1Database, id: string): Promise<StoredJou
 	};
 }
 
-const SPEND_SCHEMA = `CREATE TABLE IF NOT EXISTS llm_spend (
-	day TEXT PRIMARY KEY,
-	cost_usd REAL NOT NULL DEFAULT 0,
-	calls INTEGER NOT NULL DEFAULT 0,
-	tokens INTEGER NOT NULL DEFAULT 0
-)`;
-
 export interface SpendLimits {
 	/** Stop calling the model for the rest of the UTC day past this many US dollars. */
 	dailyUsd: number;
@@ -88,11 +93,11 @@ export interface SpendLimits {
 export function d1Budget(db: D1Database, limits: SpendLimits): Budget & { spent(): Promise<{ today: number; total: number }> } {
 	const today = () => new Date().toISOString().slice(0, 10);
 	const spent = async () => {
-		const [, totals] = await db.batch<{ today: number | null; total: number | null }>([
-			db.prepare(SPEND_SCHEMA),
-			db.prepare("SELECT (SELECT cost_usd FROM llm_spend WHERE day = ?1) AS today, (SELECT SUM(cost_usd) FROM llm_spend) AS total").bind(today()),
-		]);
-		const row = totals?.results[0];
+		await ensureSchema(db);
+		const row = await db
+			.prepare("SELECT (SELECT cost_usd FROM llm_spend WHERE day = ?1) AS today, (SELECT SUM(cost_usd) FROM llm_spend) AS total")
+			.bind(today())
+			.first<{ today: number | null; total: number | null }>();
 		return { today: row?.today ?? 0, total: row?.total ?? 0 };
 	};
 	return {
@@ -102,15 +107,14 @@ export function d1Budget(db: D1Database, limits: SpendLimits): Budget & { spent(
 			return day < limits.dailyUsd && total < limits.totalUsd;
 		},
 		async record({ costUsd, tokens }) {
-			await db.batch([
-				db.prepare(SPEND_SCHEMA),
-				db
-					.prepare(
-						`INSERT INTO llm_spend (day, cost_usd, calls, tokens) VALUES (?1, ?2, 1, ?3)
-						 ON CONFLICT(day) DO UPDATE SET cost_usd = cost_usd + ?2, calls = calls + 1, tokens = tokens + ?3`,
-					)
-					.bind(today(), costUsd, tokens),
-			]);
+			await ensureSchema(db);
+			await db
+				.prepare(
+					`INSERT INTO llm_spend (day, cost_usd, calls, tokens) VALUES (?1, ?2, 1, ?3)
+					 ON CONFLICT(day) DO UPDATE SET cost_usd = cost_usd + ?2, calls = calls + 1, tokens = tokens + ?3`,
+				)
+				.bind(today(), costUsd, tokens)
+				.run();
 		},
 	};
 }

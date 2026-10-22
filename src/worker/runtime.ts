@@ -1,6 +1,6 @@
 import { DEFAULT_FALLBACK_MODELS, DEFAULT_MODEL, type Budget, type LlmConfig } from "../engine/agent/llm.ts";
 import { QlooApi } from "../engine/qloo/endpoints.ts";
-import { KvCache } from "../engine/qloo/cache.ts";
+import { D1Cache } from "../engine/qloo/cache.ts";
 import { LiveTransport, QlooClient } from "../engine/qloo/client.ts";
 import { demoWorld } from "../engine/qloo/mock/demo-world.ts";
 import { MockTransport } from "../engine/qloo/mock/transport.ts";
@@ -54,8 +54,10 @@ export function createApi(env: Env, modes: ResolvedModes, onEvidence?: (evidence
 		const client = new QlooClient({
 			// 40 Qloo fetches plus the agent's model calls stay under the Free plan's 50 subrequests.
 			transport: new LiveTransport({ apiKey: modes.qlooKey, maxFetches: 40 }),
-			// Autocomplete skips KV: one write per keystroke would eat the free plan's daily write quota.
-			cache: options.cache === false ? undefined : new KvCache(env.QLOO_CACHE),
+			// Autocomplete skips the cache: a write per keystroke buys nothing.
+			cache: options.cache === false ? undefined : new D1Cache(env.DB),
+			// Qloo allows caching on our own server; long enough to keep featured journeys warm through judging.
+			cacheTtlSeconds: 60 * 24 * 3600,
 			concurrency: 5,
 			onEvidence,
 		});

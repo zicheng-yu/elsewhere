@@ -38,9 +38,7 @@ export default defineConfig(({ mode }) => {
 				LLM_TOTAL_USD: bindings.text("5"),
 				// Model calls per agent turn (each tool round trip is one call).
 				LLM_MAX_CALLS: bindings.text("5"),
-				// Private server-side cache of Qloo responses (never committed to the repo).
-				QLOO_CACHE: bindings.kv({ id: "872bf0866cd64231bf24d2a40e96c1d5" }),
-				// Journeys, share links and replays.
+				// Journeys, share links, replays, the LLM spending ledger and the private Qloo response cache.
 				DB: bindings.d1({ id: "ab568c3c-3932-4e2d-bfe8-27d736df35e4", name: "elsewhere-db" }),
 				// The built SPA, so the Worker can rewrite index.html for share links.
 				ASSETS: bindings.assets(),
