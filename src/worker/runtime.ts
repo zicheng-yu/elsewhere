@@ -52,8 +52,10 @@ export function llmFor(env: Env, modes: ResolvedModes, appUrl?: string): { confi
 export function createApi(env: Env, modes: ResolvedModes, onEvidence?: (evidence: Evidence) => void, options: { cache?: boolean } = {}): QlooApi {
 	if (modes.qloo === "live" && modes.qlooKey) {
 		const client = new QlooClient({
-			// 40 Qloo fetches plus the agent's model calls stay under the Free plan's 50 subrequests.
-			transport: new LiveTransport({ apiKey: modes.qlooKey, maxFetches: 40 }),
+			// The heaviest journey (four levels) needs about 35 Qloo fetches. With the agent, its model
+			// calls (LLM_MAX_CALLS, at most 5) stay within the Free plan's 50 subrequests; the scripted
+			// planner can use a few more.
+			transport: new LiveTransport({ apiKey: modes.qlooKey, maxFetches: modes.agent === "llm" ? 44 : 46 }),
 			// Autocomplete skips the cache: a write per keystroke buys nothing.
 			cache: options.cache === false ? undefined : new D1Cache(env.DB),
 			// Qloo allows caching on our own server; long enough to keep featured journeys warm through judging.
