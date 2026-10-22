@@ -115,3 +115,7 @@ Then warm the cache: `npm run warm -- --scripted` runs every featured scenario a
 ## License
 
 [MIT](./LICENSE)
+
+## License
+
+[MIT](LICENSE) for this repository's own code and content. Qloo's API and data remain Qloo's, under the hackathon's terms.
