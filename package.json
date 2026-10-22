@@ -4,6 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "cf dev",
+		"dev:live": "cf dev --mode live",
 		"build": "cf build",
 		"deploy": "cf deploy",
 		"typecheck": "cf workers types && tsc -p tsconfig.worker.json && tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
@@ -26,7 +27,6 @@
 		"vitest": "^5.0.5"
 	},
 	"dependencies": {
-		"@anthropic-ai/sdk": "^1.0.0",
 		"hono": "^4.13.13",
 		"maplibre-gl": "^6.15.0",
 		"react": "^19.3.1",

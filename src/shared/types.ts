@@ -51,12 +51,16 @@ export interface TasteEntity {
 
 export interface Locality {
 	id: string;
+	/** Qloo's travel-destination entities carry English names; administrative localities often use the local script. */
+	kind?: "locality" | "destination";
 	name: string;
 	lat: number;
 	lon: number;
 	country?: string;
 	countryCode?: string;
 	disambiguation?: string;
+	/** First-level region, e.g. "Ishikawa". */
+	region?: string;
 	population?: number;
 	/** Qloo popularity percentile in [0, 1]. */
 	popularity?: number;
@@ -75,6 +79,8 @@ export interface Place {
 	lon: number;
 	city?: string;
 	neighborhood?: string;
+	/** First-level region, e.g. "Kyoto Prefecture". */
+	region?: string;
 	country?: string;
 	countryCode?: string;
 	address?: string;
@@ -84,6 +90,10 @@ export interface Place {
 	priceLevel?: number;
 	imageUrl?: string;
 	description?: string;
+	/** Qloo's primary genre, e.g. "Shinto shrine". */
+	genre?: string;
+	/** The name the traveler typed, when it resolved to a differently named Qloo entity. */
+	requestedAs?: string;
 	/** Human-readable categories, e.g. ["Shrine", "Tourist attraction"]. */
 	categories: string[];
 	tags: TagRef[];
@@ -129,26 +139,35 @@ export interface SeasonInfo {
 	peakMonths: number[];
 	offSeasonMonths: number[];
 	bestMonths: number[];
+	/** Months Qloo flags as the worst for travel (usually weather), not necessarily quiet ones. */
+	worstMonths: number[];
 	isPeak: boolean;
 	isOffSeason: boolean;
 	isBestMonth: boolean;
+	isWorstMonth: boolean;
 	/** Events in the travel month. */
 	events: string[];
 	/** Travel advisories in the travel month. */
 	advisories: string[];
+	/** Events and advisories for each month (index 0 is January), when Qloo has them. */
+	calendar?: { events: string[]; advisories: string[] }[];
 }
 
-/** One week of Qloo attention for an entity, as a popularity percentile in [0, 1]. */
-export interface TrendPoint {
-	date: string;
-	percentile: number;
+/** Where to look for places in a destination: a Qloo locality when one matched, else a circle. */
+export interface SearchArea {
+	localityId?: string;
+	lat: number;
+	lon: number;
+	radiusKm: number;
 }
 
 export interface Hotspot {
+	/** The destination as the traveler knows it (English name, country, popularity). */
 	locality: Locality;
+	/** Qloo destination entity used to find twin cities. */
+	destinationId?: string;
+	area: SearchArea;
 	season: SeasonInfo;
-	/** Weekly attention to the destination over the past year, when Qloo's trending endpoint has it. */
-	trend?: TrendPoint[];
 	crowdedSpots: Place[];
 	tasteProfile: TasteEntity[];
 	vibeTags: TagRef[];
@@ -180,11 +199,12 @@ export interface CityTwin {
 	score: DupeScore;
 	distanceKm: number;
 	sharedTraits: string[];
-	season: SeasonInfo;
+	/** Qloo month tags for the twin, when it has them (destinations carry none). */
+	season?: SeasonInfo;
 	highlights: Place[];
 	/** Small community: suggest visiting gently. */
 	smallCommunity: boolean;
-	/** Whether the candidate came from Qloo's locality similarity or was proposed by the agent. */
+	/** Whether the candidate came from Qloo's destination similarity or was proposed by the agent. */
 	origin: "qloo" | "agent";
 }
 
@@ -258,7 +278,9 @@ export interface Evidence {
 
 export interface RunModes {
 	qloo: "mock" | "live";
-	agent: "scripted" | "claude";
+	agent: "scripted" | "llm";
+	/** The LLM behind the agent (OpenRouter model ID), when it is on. */
+	model?: string;
 }
 
 export interface JourneySnapshot {

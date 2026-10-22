@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { runBaseline } from "../engine/agent/claude.ts";
+import { BudgetExhaustedError, LlmError, runBaseline } from "../engine/agent/llm.ts";
 import { continueJourney, FollowUpUnavailableError, planJourney, startJourney } from "../engine/agent/run.ts";
 import type { JourneyState } from "../engine/agent/tools.ts";
 import { PlanTargetError } from "../engine/local.ts";
@@ -10,7 +10,7 @@ import { ResolveError } from "../engine/resolve.ts";
 import type { AgentEvent, Emit } from "../shared/events.ts";
 import { PERSONAS, SCENARIOS } from "../shared/scenarios.ts";
 import type { JourneySnapshot, RunModes } from "../shared/types.ts";
-import { clientIp, createApi, log, resolveModes, type ResolvedModes } from "./runtime.ts";
+import { clientIp, createApi, llmFor, log, resolveModes, type ResolvedModes } from "./runtime.ts";
 import { sharePage } from "./share.ts";
 import { loadJourney, saveJourney, type RecordedEvent } from "./store.ts";
 
@@ -50,7 +50,12 @@ const PlanRequestSchema = z.object({
 const MessageSchema = z.object({ message: Text(1000) });
 
 function publicModes(modes: ResolvedModes): RunModes {
-	return { qloo: modes.qloo, agent: modes.agent };
+	return { qloo: modes.qloo, agent: modes.agent, model: modes.model };
+}
+
+/** The agent's model settings and spending guard for this request, when the agent is on. */
+function agentFor(c: AppContext, modes: ResolvedModes) {
+	return llmFor(c.env, modes, new URL(c.req.url).origin);
 }
 
 function snapshotOf(state: JourneyState, modes: RunModes, createdAt: number, narrative: string): JourneySnapshot {
@@ -86,8 +91,11 @@ function errorEvent(error: unknown): AgentEvent {
 	if (error instanceof QlooError) {
 		return { type: "error", message: `Qloo request failed (${error.kind}). Please try again shortly.`, recoverable: true };
 	}
-	if (error instanceof PlanTargetError || error instanceof FollowUpUnavailableError) {
+	if (error instanceof PlanTargetError || error instanceof FollowUpUnavailableError || error instanceof BudgetExhaustedError) {
 		return { type: "error", message: error.message, recoverable: true };
+	}
+	if (error instanceof LlmError) {
+		return { type: "error", message: "The AI agent is unavailable right now. Please try again shortly.", recoverable: true };
 	}
 	return { type: "error", message: "Something went wrong while planning. Please try again.", recoverable: true };
 }
@@ -147,12 +155,12 @@ app.get("/search", async (c) => {
 	const q = c.req.query("q")?.trim() ?? "";
 	const kind = c.req.query("kind") ?? "destination";
 	if (q.length < 2 || q.length > 80) return c.json({ results: [] });
-	const api = createApi(c.env, resolveModes(c.env));
+	const api = createApi(c.env, resolveModes(c.env), undefined, { cache: false });
 	try {
 		if (kind === "destination") {
-			const found = await api.searchLocalities(q, 6);
+			const found = await api.searchDestinations(q, 6);
 			return c.json({
-				results: found.map((l) => ({ id: l.id, name: l.name, subtitle: l.disambiguation ?? l.country, lat: l.lat, lon: l.lon })),
+				results: found.map((d) => ({ id: d.id, name: d.name, subtitle: [d.region, d.country].filter(Boolean).join(", "), lat: d.lat, lon: d.lon })),
 			});
 		}
 		if (kind === "place") {
@@ -196,7 +204,7 @@ app.post("/journeys", async (c) => {
 		const started = Date.now();
 		let outcome: Awaited<ReturnType<typeof startJourney>> = {};
 		try {
-			outcome = await startJourney({ api, emit, state, agent: modes.agent, anthropicKey: modes.anthropicKey, signal });
+			outcome = await startJourney({ api, emit, state, llm: agentFor(c, modes), signal });
 		} finally {
 			if (state.hotspot) {
 				await saveJourney(c.env.DB, {
@@ -250,7 +258,7 @@ app.post("/journeys/:id/plan", async (c) => {
 		let outcome: Awaited<ReturnType<typeof planJourney>> = { history: journey.conversation };
 		try {
 			outcome = await planJourney(
-				{ api, emit, state, agent: modes.agent, anthropicKey: modes.anthropicKey, history: journey.conversation, signal },
+				{ api, emit, state, llm: agentFor(c, modes), history: journey.conversation, signal },
 				parsed.data.target,
 				parsed.data.prefs,
 			);
@@ -269,7 +277,7 @@ app.post("/journeys/:id/messages", async (c) => {
 	const parsed = MessageSchema.safeParse(await c.req.json().catch(() => null));
 	if (!parsed.success) return c.json({ error: "invalid_request" }, 400);
 	const modes = resolveModes(c.env);
-	if (modes.agent !== "claude") {
+	if (modes.agent !== "llm") {
 		return c.json({ error: "agent_unavailable", message: new FollowUpUnavailableError().message }, 409);
 	}
 	const journey = await loadJourney(c.env.DB, c.req.param("id"));
@@ -295,7 +303,7 @@ app.post("/journeys/:id/messages", async (c) => {
 		let outcome: Awaited<ReturnType<typeof continueJourney>> = { history: journey.conversation };
 		try {
 			outcome = await continueJourney(
-				{ api, emit, state, agent: modes.agent, anthropicKey: modes.anthropicKey, history: journey.conversation, signal },
+				{ api, emit, state, llm: agentFor(c, modes), history: journey.conversation, signal },
 				parsed.data.message,
 			);
 		} finally {
@@ -313,20 +321,22 @@ app.post("/baseline", async (c) => {
 	const parsed = TripRequestSchema.safeParse(await c.req.json().catch(() => null));
 	if (!parsed.success) return c.json({ error: "invalid_request" }, 400);
 	const modes = resolveModes(c.env);
-	if (modes.agent !== "claude" || !modes.anthropicKey) {
+	const llm = agentFor(c, modes);
+	if (!llm) {
 		return c.json({ available: false, reason: "The LLM-only comparison runs once the language model is configured." });
 	}
 	if (await rateLimited(c)) return c.json({ error: "rate_limited" }, 429);
-	const cacheKey = `baseline:v1:${JSON.stringify(parsed.data)}`;
+	const cacheKey = `baseline:v2:${llm.config.model}:${JSON.stringify(parsed.data)}`;
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cacheKey));
 	const key = `baseline:${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
 	const cached = await c.env.QLOO_CACHE.get(key);
 	if (cached) return c.json({ available: true, text: cached, cached: true });
 	try {
-		const text = await runBaseline(modes.anthropicKey, parsed.data);
-		c.executionCtx.waitUntil(c.env.QLOO_CACHE.put(key, text, { expirationTtl: 7 * 24 * 3600 }));
-		return c.json({ available: true, text, cached: false });
+		const { text } = await runBaseline(llm.config, llm.budget, parsed.data);
+		c.executionCtx.waitUntil(c.env.QLOO_CACHE.put(key, text, { expirationTtl: 30 * 24 * 3600 }));
+		return c.json({ available: true, text, cached: false, model: llm.config.model });
 	} catch (error) {
+		if (error instanceof BudgetExhaustedError) return c.json({ available: false, reason: error.message });
 		log("error", "baseline failed", { error: error instanceof Error ? error.message : String(error) });
 		return c.json({ available: false, reason: "The comparison model is unavailable right now." }, 502);
 	}

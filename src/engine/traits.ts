@@ -10,6 +10,8 @@ const TRAIT_TYPE_PATTERNS = [
 	/culinary/,
 	/activity/,
 	/ambience/,
+	/setting/,
+	/interests/,
 	/popular_food/,
 	/ideal_traveler/,
 	/photogenic/,

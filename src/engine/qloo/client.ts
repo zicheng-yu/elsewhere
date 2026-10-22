@@ -1,4 +1,5 @@
 import type { Evidence } from "../../shared/types.ts";
+import { slimResponse } from "./slim.ts";
 
 export const QLOO_HACKATHON_BASE_URL = "https://hackathon.api.qloo.com";
 
@@ -96,8 +97,9 @@ export class LiveTransport implements QlooTransport {
 	constructor(options: LiveTransportOptions) {
 		this.#apiKey = options.apiKey;
 		this.#baseUrl = (options.baseUrl ?? QLOO_HACKATHON_BASE_URL).replace(/\/$/, "");
-		this.#timeoutMs = options.timeoutMs ?? 15_000;
-		this.#maxRetries = options.maxRetries ?? 2;
+		// One slow call should not stall a whole journey: fail fast, retry once.
+		this.#timeoutMs = options.timeoutMs ?? 10_000;
+		this.#maxRetries = options.maxRetries ?? 1;
 	}
 
 	async get(path: string, params: URLSearchParams): Promise<unknown> {
@@ -163,9 +165,17 @@ export interface QlooClientOptions {
 	cacheTtlSeconds?: number;
 	concurrency?: number;
 	onEvidence?: (evidence: Evidence) => void;
+	/** Trim responses to the fields Elsewhere reads (default). Exploration scripts can turn it off. */
+	trim?: boolean;
 }
 
-/** Adds caching, concurrency limits and an evidence trail on top of a transport. */
+/** Bump when the cached response shape changes. */
+const CACHE_VERSION = "v3";
+
+/**
+ * Adds trimming, caching, request coalescing, concurrency limits and an
+ * evidence trail on top of a transport.
+ */
 export class QlooClient {
 	readonly mode: "mock" | "live";
 	#transport: QlooTransport;
@@ -173,7 +183,10 @@ export class QlooClient {
 	#ttl: number;
 	#limit: <T>(task: () => Promise<T>) => Promise<T>;
 	#onEvidence: ((evidence: Evidence) => void) | undefined;
+	#trim: boolean;
 	#counter = 0;
+	/** Identical requests in flight at the same time share one call. */
+	readonly #inflight = new Map<string, Promise<unknown>>();
 	/** Keeps evidence IDs unique across the runs (journey, plans) that share one timeline. */
 	readonly #runTag = crypto.randomUUID().slice(0, 6);
 
@@ -184,11 +197,24 @@ export class QlooClient {
 		this.#ttl = options.cacheTtlSeconds ?? 7 * 24 * 3600;
 		this.#limit = createLimiter(options.concurrency ?? 5);
 		this.#onEvidence = options.onEvidence;
+		this.#trim = options.trim ?? true;
 	}
 
 	async get(path: string, params: QlooParams, note?: string): Promise<unknown> {
 		const search = toSearchParams(params);
-		const cacheKey = `${this.mode}:${path}?${search.toString()}`;
+		const cacheKey = `${CACHE_VERSION}:${this.mode}:${this.#trim ? "" : "raw:"}${path}?${search.toString()}`;
+		const pending = this.#inflight.get(cacheKey);
+		if (pending) return pending;
+		const task = this.#fetch(path, search, cacheKey, note);
+		this.#inflight.set(cacheKey, task);
+		try {
+			return await task;
+		} finally {
+			this.#inflight.delete(cacheKey);
+		}
+	}
+
+	async #fetch(path: string, search: URLSearchParams, cacheKey: string, note?: string): Promise<unknown> {
 		const started = Date.now();
 
 		const cached = await this.#cache?.get(cacheKey).catch(() => undefined);
@@ -198,7 +224,8 @@ export class QlooClient {
 		}
 
 		try {
-			const data = await this.#limit(() => this.#transport.get(path, search));
+			const response = await this.#limit(() => this.#transport.get(path, search));
+			const data = this.#trim ? slimResponse(response) : response;
 			await this.#cache?.put(cacheKey, data, this.#ttl).catch(() => undefined);
 			this.#record(path, search, data, { cached: false, ok: true, started, note });
 			return data;

@@ -2,21 +2,13 @@
  * Typed helpers for the Qloo endpoints Elsewhere uses. Parameter names follow
  * the official docs: GET only, every parameter in the query string.
  */
-import type { HeatCell, Locality, Place, TagRef, TasteEntity, TrendPoint } from "../../shared/types.ts";
+import type { HeatCell, Locality, Place, SearchArea, TagRef, TasteEntity } from "../../shared/types.ts";
 import type { QlooClient } from "./client.ts";
-import {
-	compareTraitsOf,
-	entitiesOf,
-	heatCellsOf,
-	tagsOf,
-	toLocality,
-	toPlace,
-	toTaste,
-	trendOf,
-} from "./normalize.ts";
+import { compareTraitsOf, entitiesOf, heatCellsOf, tagsOf, toLocality, toPlace, toTaste } from "./normalize.ts";
 
 export const ENTITY_TYPE = {
 	locality: "urn:entity:locality",
+	destination: "urn:entity:destination",
 	place: "urn:entity:place",
 	movie: "urn:entity:movie",
 	tvShow: "urn:entity:tv_show",
@@ -39,28 +31,63 @@ export const TASTE_SEARCH_TYPES = [
 	ENTITY_TYPE.podcast,
 ];
 
+const category = (name: string) => `urn:tag:category:place:${name}`;
+
+/** Qloo place categories (`urn:tag:category:place:*`). */
 export const PLACE_TAG = {
-	attraction: "urn:tag:genre:place:tourist_attraction",
-	landmark: "urn:tag:genre:place:historical_landmark",
-	museum: "urn:tag:genre:place:museum",
-	park: "urn:tag:genre:place:park",
-	gallery: "urn:tag:genre:place:art_gallery",
-	restaurant: "urn:tag:genre:place:restaurant",
-	cafe: "urn:tag:genre:place:restaurant:cafe",
-	bar: "urn:tag:genre:place:restaurant:bar",
-	hotel: "urn:tag:genre:place:hotel",
+	attraction: category("tourist_attraction"),
+	landmark: category("historical_landmark"),
+	museum: category("museum"),
+	artMuseum: category("art_museum"),
+	park: category("park"),
+	garden: category("garden"),
+	scenic: category("scenic_spot"),
+	nature: category("natural_beauty_spot"),
+	worship: category("place_of_worship"),
+	religious: category("religious_institution"),
+	restaurant: category("restaurant"),
+	cafe: category("cafe"),
+	bar: category("bar"),
+	hotel: category("hotel"),
 } as const;
 
-export const SIGHT_TAGS = [PLACE_TAG.attraction, PLACE_TAG.landmark, PLACE_TAG.museum, PLACE_TAG.park, PLACE_TAG.gallery];
-export const FOOD_DRINK_TAGS = [PLACE_TAG.restaurant, PLACE_TAG.cafe, PLACE_TAG.bar, PLACE_TAG.hotel];
+export const SIGHT_TAGS = [PLACE_TAG.attraction, PLACE_TAG.landmark, PLACE_TAG.museum, PLACE_TAG.park, PLACE_TAG.garden, PLACE_TAG.scenic];
+
+/** Categories too broad to say what kind of place something is. */
+const GENERIC_TAGS = new Set<string>([PLACE_TAG.attraction, PLACE_TAG.worship, PLACE_TAG.religious, category("point_of_interest")]);
+/** Outdoor categories are interchangeable for "the same feel": a garden can stand in for a bamboo grove. */
+const NATURE_TAGS = [PLACE_TAG.scenic, PLACE_TAG.park, PLACE_TAG.garden, PLACE_TAG.nature, category("botanical_garden"), category("hiking_area")];
+const MUSEUM_TAGS = [PLACE_TAG.museum, PLACE_TAG.artMuseum, category("history_museum")];
+
+/** The categories a quieter twin of `place` should share. */
+export function twinCategories(place: Place): string[] {
+	const specific = place.tags.filter((tag) => tag.type === "urn:tag:category:place" && !GENERIC_TAGS.has(tag.id)).map((tag) => tag.id);
+	if (specific.some((id) => NATURE_TAGS.includes(id))) return [...new Set([...specific, ...NATURE_TAGS])];
+	if (specific.some((id) => MUSEUM_TAGS.includes(id))) return [...new Set([...specific, ...MUSEUM_TAGS])];
+	return specific.length > 0 ? specific : [PLACE_TAG.attraction];
+}
+
+/** Primary genres that make a place a meal, a drink, a bed or a shop rather than a sight. */
+const NOT_A_SIGHT = /restaurant|caf[eé]|coffee|\bbar\b|\bpub\b|izakaya|bistro|brasserie|bakery|noodle|ramen|sushi|hotel|hostel|\binn\b|lodging|apartment|store|\bshop\b|mall|supermarket|station|parking|rest stop|office|clinic|school|university|salon|rental|sports|stadium|athletic|arena|playground|gym\b|golf|tenant|convention|nursery|visitor cent|casino|agency|event venue|wedding|banquet|coworking/i;
+
+const SIGHT_CATEGORY = /tourist_attraction|historical_landmark|museum|park|garden|scenic_spot|place_of_worship|temple|shrine|church|castle|palace|monument|viewpoint|natural_beauty/;
+const FOOD_OR_BED_CATEGORY = /restaurant|cafe|coffee|:bar$|pub|hotel|lodging|store|shop/;
+
+/** Names that give a place away even when its genre looks fine ("Yamashiro Sports Park" is filed as a park). */
+const NOT_A_SIGHT_NAME = /sports park|stadium|shopping (mall|center|centre)|station\b|parking|outlet/i;
+
+export function isSight(place: Place): boolean {
+	if (NOT_A_SIGHT_NAME.test(place.name)) return false;
+	if (place.genre) return !NOT_A_SIGHT.test(place.genre);
+	// No genre: trust only a sight category (an untyped street address is not a sight).
+	const categories = place.tags.filter((tag) => tag.type === "urn:tag:category:place").map((tag) => tag.id);
+	return categories.some((id) => SIGHT_CATEGORY.test(id)) && !categories.some((id) => FOOD_OR_BED_CATEGORY.test(id));
+}
 
 export interface PlaceQuery {
 	signalIds?: string[];
 	signalTagIds?: string[];
-	/** Locality Qloo ID or a WKT geometry (longitude first). */
-	location?: string;
-	radiusM?: number;
-	excludeLocation?: string;
+	area?: SearchArea;
 	popularityMax?: number;
 	popularityMin?: number;
 	excludeIds?: string[];
@@ -69,11 +96,7 @@ export interface PlaceQuery {
 	excludeTagIds?: string[];
 	/** Score exactly these entities against the signals. */
 	resultIds?: string[];
-	/** Cap results per city before paging, so one call can cover several cities. */
-	diversifyBy?: "properties.geocode.city" | "properties.geocode.metro";
-	diversifyTake?: number;
 	take?: number;
-	explain?: boolean;
 }
 
 export interface Near {
@@ -92,21 +115,14 @@ function clampTake(take: number | undefined, fallback: number): number {
 
 /** WKT point; WKT puts longitude first. */
 export function wktPoint(lat: number, lon: number): string {
-	return `POINT(${lon.toFixed(6)} ${lat.toFixed(6)})`;
+	return `POINT(${lon.toFixed(5)} ${lat.toFixed(5)})`;
 }
 
-/** WKT MULTIPOLYGON of circles (approximated by `sides`-gons), for one query that spans several cities. */
-export function wktCircles(circles: { lat: number; lon: number; radiusKm: number }[], sides = 10): string {
-	const polygons = circles.map(({ lat, lon, radiusKm }) => {
-		const dLat = radiusKm / 111.32;
-		const dLon = radiusKm / (111.32 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
-		const ring = Array.from({ length: sides + 1 }, (_, i) => {
-			const angle = (2 * Math.PI * (i % sides)) / sides;
-			return `${(lon + dLon * Math.cos(angle)).toFixed(4)} ${(lat + dLat * Math.sin(angle)).toFixed(4)}`;
-		});
-		return `((${ring.join(",")}))`;
-	});
-	return `MULTIPOLYGON(${polygons.join(",")})`;
+/** Location filter for an area: the Qloo locality when known, else a circle. */
+export function areaParams(area: SearchArea | undefined): Record<string, string | number | undefined> {
+	if (!area) return {};
+	if (area.localityId) return { "filter.location": area.localityId };
+	return { "filter.location": wktPoint(area.lat, area.lon), "filter.location.radius": Math.round(area.radiusKm * 1000) };
 }
 
 export class QlooApi {
@@ -120,11 +136,65 @@ export class QlooApi {
 		return this.client.mode;
 	}
 
-	async searchLocalities(query: string, take = 5): Promise<Locality[]> {
+	/** Travel destinations: English names, a country and a popularity that compares destinations. */
+	async searchDestinations(query: string, take = 5): Promise<Locality[]> {
+		const response = await this.client.get(
+			"/search",
+			{ query, types: [ENTITY_TYPE.destination], take },
+			`Find destination "${query}"`,
+		);
+		return entitiesOf(response).map(toLocality).filter(isDefined);
+	}
+
+	/** Administrative localities: precise boundaries for place filters, and month tags. */
+	async searchLocalities(query: string, take = 3): Promise<Locality[]> {
 		const response = await this.client.get(
 			"/search",
 			{ query, types: [ENTITY_TYPE.locality], take },
-			`Resolve destination "${query}"`,
+			`Find the city boundary for "${query}"`,
+		);
+		return entitiesOf(response).map(toLocality).filter(isDefined);
+	}
+
+	/**
+	 * A locality with its full tag set (peak and best months, events, advisories).
+	 * Search results carry no month tags, so score the locality itself against a
+	 * related signal (a locality is never returned for its own signal).
+	 */
+	async localityProfile(localityId: string, signalId: string): Promise<Locality | undefined> {
+		const response = await this.client.get(
+			"/v2/insights",
+			{
+				"filter.type": ENTITY_TYPE.locality,
+				"signal.interests.entities": [signalId],
+				"filter.results.entities": [localityId],
+				take: 1,
+			},
+			"Read the destination's seasons",
+		);
+		return entitiesOf(response).map(toLocality).find(isDefined);
+	}
+
+	/** Destinations with a similar soul, or the given destinations scored against the signals. */
+	async destinations(options: {
+		signalIds?: string[];
+		signalTagIds?: string[];
+		resultIds?: string[];
+		take?: number;
+		offset?: number;
+		note?: string;
+	}): Promise<Locality[]> {
+		const response = await this.client.get(
+			"/v2/insights",
+			{
+				"filter.type": ENTITY_TYPE.destination,
+				"signal.interests.entities": options.signalIds,
+				"signal.interests.tags": options.signalTagIds,
+				"filter.results.entities": options.resultIds,
+				take: clampTake(options.take, 30),
+				offset: options.offset,
+			},
+			options.note ?? "Find destinations with a similar soul",
 		);
 		return entitiesOf(response).map(toLocality).filter(isDefined);
 	}
@@ -139,7 +209,7 @@ export class QlooApi {
 				"filter.radius": near ? Math.min(100, near.radiusMiles) : undefined,
 				take,
 			},
-			`Resolve place "${query}"`,
+			`Find "${query}"`,
 		);
 		return entitiesOf(response).map(toPlace).filter(isDefined);
 	}
@@ -148,55 +218,24 @@ export class QlooApi {
 		const response = await this.client.get(
 			"/search",
 			{ query, types: TASTE_SEARCH_TYPES, take },
-			`Resolve favorite "${query}"`,
+			`Find favorite "${query}"`,
 		);
 		return entitiesOf(response).map(toTaste).filter(isDefined);
 	}
 
-	/** The most popular sights near a point: the likely crowded must-sees. */
-	async topAttractions(near: Near, take = 8): Promise<Place[]> {
-		const response = await this.client.get(
-			"/search",
-			{
-				types: [ENTITY_TYPE.place],
-				"filter.location": `${near.lat},${near.lon}`,
-				"filter.radius": Math.min(100, near.radiusMiles),
-				"filter.tags": [PLACE_TAG.attraction, PLACE_TAG.landmark],
-				sort_by: "popularity",
-				take,
-			},
-			"Find the most popular sights",
-		);
-		return entitiesOf(response).map(toPlace).filter(isDefined);
-	}
-
+	/** Place-relevant tags for a vibe word ("quiet" → ambience and noise-level tags). */
 	async searchTags(query: string, take = 3): Promise<TagRef[]> {
 		const response = await this.client.get(
 			"/v2/tags",
-			{ "filter.query": query, "feature.semantic_search": true, take },
+			{
+				"filter.query": query,
+				"feature.semantic_search": true,
+				"filter.parents.types": ENTITY_TYPE.place,
+				take,
+			},
 			`Match vibe "${query}" to tags`,
 		);
 		return tagsOf(response);
-	}
-
-	async localityDetails(id: string): Promise<Locality | undefined> {
-		const response = await this.client.get("/entities", { entity_ids: [id] }, "Load locality details");
-		return entitiesOf(response).map(toLocality).find(isDefined);
-	}
-
-	/** Cities with a similar soul. Locality output only accepts locality signals. */
-	async similarLocalities(options: { signalIds: string[]; take?: number; popularityMax?: number }): Promise<Locality[]> {
-		const response = await this.client.get(
-			"/v2/insights",
-			{
-				"filter.type": ENTITY_TYPE.locality,
-				"signal.interests.entities": options.signalIds,
-				"filter.popularity.max": options.popularityMax,
-				take: clampTake(options.take, 30),
-			},
-			"Find cities with a similar soul",
-		);
-		return entitiesOf(response).map(toLocality).filter(isDefined);
 	}
 
 	async places(query: PlaceQuery, note?: string): Promise<Place[]> {
@@ -206,9 +245,7 @@ export class QlooApi {
 				"filter.type": ENTITY_TYPE.place,
 				"signal.interests.entities": query.signalIds,
 				"signal.interests.tags": query.signalTagIds,
-				"filter.location": query.location,
-				"filter.location.radius": query.radiusM,
-				"filter.exclude.location": query.excludeLocation,
+				...areaParams(query.area),
 				"filter.popularity.max": query.popularityMax,
 				"filter.popularity.min": query.popularityMin,
 				"filter.exclude.entities": query.excludeIds,
@@ -216,9 +253,6 @@ export class QlooApi {
 				"operator.filter.tags": query.tagIds?.length ? (query.tagOperator ?? "union") : undefined,
 				"filter.exclude.tags": query.excludeTagIds,
 				"filter.results.entities": query.resultIds,
-				"diversify.by": query.diversifyBy,
-				"diversify.take": query.diversifyBy ? query.diversifyTake : undefined,
-				"feature.explainability": query.explain ? true : undefined,
 				take: clampTake(query.take, 20),
 			},
 			note,
@@ -226,50 +260,33 @@ export class QlooApi {
 		return entitiesOf(response).map(toPlace).filter(isDefined);
 	}
 
-	async heatmap(options: {
-		location: string;
-		radiusM?: number;
-		signalIds?: string[];
-		signalTagIds?: string[];
-		boundary?: string;
-	}): Promise<HeatCell[]> {
+	/** The most popular sights in an area, with IDs that insights accepts as signals. */
+	async topSights(area: SearchArea, take = 30): Promise<Place[]> {
+		const sights = await this.places({ area, tagIds: [PLACE_TAG.attraction], take }, "List the most popular sights");
+		return sights.filter(isSight);
+	}
+
+	async heatmap(options: { area: SearchArea; signalIds?: string[]; signalTagIds?: string[] }): Promise<HeatCell[]> {
 		const response = await this.client.get(
 			"/v2/insights",
 			{
 				"filter.type": ENTITY_TYPE.heatmap,
-				"filter.location": options.location,
-				"filter.location.radius": options.radiusM,
+				...areaParams(options.area),
 				"signal.interests.entities": options.signalIds,
 				"signal.interests.tags": options.signalTagIds,
-				"output.heatmap.boundary": options.boundary,
 			},
 			"Map where your taste concentrates",
 		);
 		return heatCellsOf(response);
 	}
 
-	async compare(aIds: string[], bIds: string[], take = 10): Promise<string[]> {
+	/** Shared character of two entities, strongest first. */
+	async compare(aIds: string[], bIds: string[], take = 12): Promise<string[]> {
 		const response = await this.client.get(
 			"/v2/analysis/compare",
 			{ "a.signal.interests.entities": aIds, "b.signal.interests.entities": bIds, take },
 			"Compare taste DNA",
 		);
 		return compareTraitsOf(response);
-	}
-
-	/** Weekly attention for one entity between two ISO dates (YYYY-MM-DD). */
-	async trending(type: string, entityId: string, start: string, end: string): Promise<TrendPoint[]> {
-		const response = await this.client.get(
-			"/v2/trending",
-			{
-				"filter.type": type,
-				"signal.interests.entities": [entityId],
-				"filter.start_date": start,
-				"filter.end_date": end,
-				take: 50,
-			},
-			"Load popularity trend",
-		);
-		return trendOf(response);
 	}
 }

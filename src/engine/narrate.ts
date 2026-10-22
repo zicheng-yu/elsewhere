@@ -3,7 +3,6 @@
  * engine's results; nothing is generated.
  */
 import { joinNames, km, monthName, pct, percentile } from "../shared/format.ts";
-import { attentionExtremes } from "../shared/trend.ts";
 import type { CityTwin, DupeScore, Hotspot, LocalPlan, ScoreKey, ZoomResult } from "../shared/types.ts";
 
 function component(score: DupeScore, key: ScoreKey): number | undefined {
@@ -23,15 +22,12 @@ export function narrateHotspot(hotspot: Hotspot): string {
 		sentences.push(`Let's look at ${when}.`);
 	}
 	if (locality.popularity !== undefined) {
-		sentences.push(`${locality.name} sits in the ${percentile(locality.popularity)} popularity percentile on Qloo.`);
-	}
-	const { busiest, quietest } = attentionExtremes(hotspot.trend);
-	if (busiest && quietest) {
-		sentences.push(
-			`Over the past year, attention to ${locality.name} on Qloo peaked in ${monthName(busiest)} and dipped in ${monthName(quietest)}.`,
-		);
+		sentences.push(`Among travel destinations, ${locality.name} sits in the ${percentile(locality.popularity)} popularity percentile on Qloo.`);
 	}
 	if (season.events.length > 0) sentences.push(`This month brings ${joinNames(season.events.slice(0, 2))}.`);
+	if (season.isWorstMonth && season.advisories.length > 0) {
+		sentences.push(`Qloo also flags ${month} for ${joinNames(season.advisories.slice(0, 2).map((a) => a.toLowerCase()))}.`);
+	}
 	if (hotspot.crowdedSpots.length > 0) {
 		sentences.push(
 			`Your must-sees, ${joinNames(hotspot.crowdedSpots.map((s) => s.name))}, are among its most popular places.`,
@@ -49,13 +45,13 @@ export function narrateHotspot(hotspot: Hotspot): string {
 function cityLine(twin: CityTwin, home: string): string {
 	const soul = pct(component(twin.score, "soul"));
 	const traits = twin.sharedTraits.length > 0 ? `, sharing ${joinNames(twin.sharedTraits.slice(0, 2).map((t) => t.toLowerCase()))}` : "";
-	const season = twin.season.isBestMonth
+	const season = twin.season?.isBestMonth
 		? ` ${monthName(twin.season.month)} is one of its best months.`
-		: twin.season.isPeak
+		: twin.season?.isPeak
 			? ` Note that ${monthName(twin.season.month)} is busy there too.`
 			: "";
 	const gently = twin.smallCommunity ? " It's a small community, so visit gently." : "";
-	return `${twin.city.name} (${km(twin.distanceKm)} away) has a ${soul} soul match with ${home}${traits}, at the ${percentile(twin.city.popularity)} popularity percentile.${season}${gently}`;
+	return `${twin.city.name} (${km(twin.distanceKm)} away) has a ${soul} soul match with ${home}${traits}, at the ${percentile(twin.city.popularity)} destination-popularity percentile.${season}${gently}`;
 }
 
 export function narrateZoom(result: ZoomResult, hotspot: Hotspot): string {

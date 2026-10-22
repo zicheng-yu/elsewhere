@@ -5,7 +5,6 @@
  */
 import type { Emit } from "../../shared/events.ts";
 import { monthName, percentile } from "../../shared/format.ts";
-import { attentionExtremes } from "../../shared/trend.ts";
 import type {
 	Hotspot,
 	LocalPlan,
@@ -66,6 +65,43 @@ export async function traced<T>(
 
 const round2 = (value: number | undefined) => (value === undefined ? undefined : Math.round(value * 100) / 100);
 
+/** Season facts for the model, or an explicit "unknown" so it never reads missing tags as "not peak". */
+function seasonSummary(hotspot: Hotspot): Record<string, unknown> | string {
+	const { season } = hotspot;
+	const known = season.peakMonths.length + season.bestMonths.length + season.offSeasonMonths.length + season.worstMonths.length > 0;
+	if (!known) return "Qloo has no month data for this destination";
+	return {
+		isPeakSeason: season.isPeak,
+		isBestMonth: season.isBestMonth,
+		isWorstMonth: season.isWorstMonth,
+		peakMonths: season.peakMonths.map(monthName),
+		bestMonths: season.bestMonths.map(monthName),
+		eventsThisMonth: season.events,
+		advisoriesThisMonth: season.advisories,
+	};
+}
+
+/**
+ * Results without per-place tags: the cards never read them, and dropping them
+ * keeps streamed events and saved journeys small (cheaper to serialize).
+ * The hotspot keeps its tags; later queries filter on the crowded spots' categories.
+ */
+function lean(result: ZoomResult): ZoomResult {
+	const bare = <T extends { tags: unknown[] }>(place: T): T => ({ ...place, tags: [] });
+	switch (result.level) {
+		case "city":
+			return { ...result, items: result.items.map((item) => ({ ...item, original: bare(item.original), twin: bare(item.twin) })) };
+		case "region":
+			return { ...result, items: result.items.map((item) => ({ ...item, places: item.places.map(bare) })) };
+		default:
+			return { ...result, items: result.items.map((item) => ({ ...item, city: bare(item.city), highlights: item.highlights.map(bare) })) };
+	}
+}
+
+function leanPlan(plan: LocalPlan): LocalPlan {
+	return { ...plan, days: plan.days.map((day) => ({ ...day, stops: day.stops.map((stop) => ({ ...stop, place: { ...stop.place, tags: [] } })) })) };
+}
+
 export async function resolveTripTool(ctx: ToolContext, request: TripRequest): Promise<Record<string, unknown>> {
 	const hotspot = await traced(
 		ctx,
@@ -76,23 +112,19 @@ export async function resolveTripTool(ctx: ToolContext, request: TripRequest): P
 	ctx.state.request = request;
 	ctx.state.hotspot = hotspot;
 	ctx.emit({ type: "ui.hotspot", hotspot });
-	const attention = attentionExtremes(hotspot.trend);
 	return {
 		destination: {
 			name: hotspot.locality.name,
 			country: hotspot.locality.country,
 			popularityPercentile: percentile(hotspot.locality.popularity),
 			travelMonth: monthName(hotspot.season.month) || undefined,
-			isPeakSeason: hotspot.season.isPeak,
-			peakMonths: hotspot.season.peakMonths.map(monthName),
-			eventsThisMonth: hotspot.season.events,
-			pastYearAttention: attention.busiest
-				? { busiestMonth: monthName(attention.busiest), quietestMonth: monthName(attention.quietest), source: "Qloo weekly trending" }
-				: undefined,
+			season: seasonSummary(hotspot),
 		},
 		crowdedSpots: hotspot.crowdedSpots.map((s) => ({
 			id: s.id,
 			name: s.name,
+			requestedAs: s.requestedAs,
+			kind: s.genre,
 			popularityPercentile: percentile(s.popularity),
 		})),
 		favoritesMatched: hotspot.tasteProfile.map((t) => `${t.name} (${t.kind})`),
@@ -152,12 +184,6 @@ function summarizeZoom(result: ZoomResult): Record<string, unknown> {
 					popularityPercentile: percentile(item.city.popularity),
 					scores: scores(item.score),
 					sharedTraits: item.sharedTraits,
-					season: {
-						isPeak: item.season.isPeak,
-						isBestMonth: item.season.isBestMonth,
-						isOffSeason: item.season.isOffSeason,
-						events: item.season.events,
-					},
 					highlights: item.highlights.map((p) => p.name),
 					smallCommunity: item.smallCommunity,
 				})),
@@ -187,7 +213,7 @@ export async function findDupesTool(
 			}
 		},
 		(r) => (r.items.length > 0 ? `${r.items.length} alternatives` : (r.note ?? "none found")),
-	);
+	).then(lean);
 	ctx.state.zooms = [...ctx.state.zooms.filter((z) => z.level !== result.level), result];
 	ctx.emit({ type: "ui.zoom", result });
 	return summarizeZoom(result);
@@ -205,7 +231,7 @@ export async function planLocalTool(
 		"Planning it like a local",
 		() => planLocal({ api: ctx.api, hotspot, zooms: ctx.state.zooms }, { level, itemId }, prefs),
 		(p) => `${p.target.name} · ${p.days.length} day${p.days.length === 1 ? "" : "s"}`,
-	);
+	).then(leanPlan);
 	ctx.state.plan = plan;
 	ctx.emit({ type: "ui.plan", plan });
 	return {

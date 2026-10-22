@@ -18,7 +18,7 @@ Tell Elsewhere where you were headed, when, what you planned to see, and what yo
 
 - **Same city:** quieter twins of each crowded must-see, scored by Qloo place affinity and capped by popularity.
 - **Day trip:** nearby towns that share the hotspot's feel, outside the crowded city.
-- **Same country:** a twin city, found with Qloo's locality-to-locality affinity and re-scored against your taste.
+- **Same country:** a twin city, found with Qloo's destination-to-destination affinity and re-scored against your taste.
 - **Beyond borders:** the same soul in another country.
 
 Every card shows a transparent **Dupe Score**, which combines four components:
@@ -38,14 +38,14 @@ Choose **Go like a local** and the agent builds the rest of the trip:
 ## How we built it
 
 - **Agent:**
-  - Claude (`claude-opus-5-5`) runs on the Anthropic TypeScript SDK's tool runner, with streaming and three tools: `resolve_trip`, `find_dupes` and `plan_local`.
+  - An LLM agent (Claude Haiku 5.5 through OpenRouter, with a fallback model) runs a streaming tool-calling loop with three tools: `resolve_trip`, `find_dupes` and `plan_local`. A journey costs about $0.002, and a spending ledger caps daily and total use.
   - It chooses zoom levels from the traveler's constraints and can propose extra candidate cities, which Qloo then scores.
   - It handles follow-ups such as "even quieter, and add a jazz bar".
   - Result cards are always tool output, so the model cannot invent places.
 - **Qloo:**
   - `/search` and `/v2/tags` resolve entities and vibes.
-  - `/v2/insights` provides place, locality and heatmap outputs, using location, radius, exclusion, popularity and result-entity filters.
-  - `/v2/analysis/compare` adds shared traits, and `/v2/trending` draws a crowd calendar: the destination's weekly attention over the past year, over Qloo's peak, best and off-season month tags.
+  - `/v2/insights` provides place, destination, locality and heatmap outputs, using location, category-tag, popularity, exclusion and result-entity filters.
+  - Locality month tags draw a crowd calendar: peak, best and worst months, with each month's events and travel advisories. `/v2/analysis/compare` adds shared traits between twin cities.
   - Every request is a GET to the hackathon host, cached privately in Workers KV.
 - **Platform:**
   - One Cloudflare Worker serves the React app and a Hono API.
@@ -58,9 +58,10 @@ Choose **Go like a local** and the agent builds the rest of the trip:
 
 ## Challenges we ran into
 
-- Qloo's locality output only accepts locality signals, so personal taste can't steer city recommendations directly. We split the work in two:
-  - Qloo finds cities with the hotspot's soul.
-  - Each candidate is then re-scored by how Qloo rates that city's places against the traveler's favorites.
+- Real data behaved differently from the docs' examples, and the engine had to adapt:
+  - Famous sights such as Fushimi Inari Taisha exist in search only as stubs that insights rejects as signals, so must-sees are matched against the city's insights-ranked sights, with the nearest popular sight of the same kind standing in.
+  - Administrative localities are named in the local script and carry heavy boundary polygons; destination entities carry English names and a popularity that compares cities, so twin cities run on destinations and only the seasons come from localities.
+  - Responses are trimmed before caching so a journey fits the Workers CPU budget.
 - "Less crowded" had to be honest. Qloo popularity is a cultural-attention percentile, not a head count. We score crowd relief on tail shares, and never claim visitor numbers.
 - Keeping the agent grounded: numbers are computed in code, and cards come only from tool results.
 
@@ -82,7 +83,7 @@ Choose **Go like a local** and the agent builds the rest of the trip:
 
 ## Built with
 
-Qloo Insights API · Claude (Anthropic TypeScript SDK) · Cloudflare Workers, KV, D1 · Hono · React · Vite · Tailwind CSS · MapLibre GL · OpenFreeMap · Zod · Vitest
+Qloo Insights API · Claude Haiku 5.5 via OpenRouter · Cloudflare Workers, KV, D1 · Hono · React · Vite · Tailwind CSS · MapLibre GL · OpenFreeMap · Zod · Vitest
 
 ## Testing instructions
 

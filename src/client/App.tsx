@@ -15,6 +15,12 @@ import { api, ApiError } from "./lib/api.ts";
 import { emptyJourney, journeyReducer, type JourneyView } from "./lib/journey.ts";
 import { navigate, useRoute } from "./lib/router.ts";
 
+/** "anthropic/claude-haiku-5.5" → "Claude Haiku 5.5". */
+function modelLabel(model: string): string {
+	const name = model.split("/").at(-1) ?? model;
+	return name.replace(/-(\d)/, " $1").replace(/-/g, " ").replace(/\b\p{L}/gu, (c) => c.toUpperCase()).replace(/Gpt/, "GPT");
+}
+
 function ModeBadges({ modes }: { modes?: RunModes }) {
 	if (!modes) return null;
 	return (
@@ -30,7 +36,9 @@ function ModeBadges({ modes }: { modes?: RunModes }) {
 				{modes.agent === "scripted" ? (
 					<Badge title="A deterministic planner calls the same tools as the language-model agent.">Scripted planner</Badge>
 				) : (
-					<Badge tone="good">Claude agent</Badge>
+					<Badge tone="good" title={modes.model ? `Language model: ${modes.model} (via OpenRouter)` : undefined}>
+						AI agent{modes.model ? ` · ${modelLabel(modes.model)}` : ""}
+					</Badge>
 				)}
 			</span>
 		</div>

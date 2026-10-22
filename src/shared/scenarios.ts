@@ -49,7 +49,7 @@ export const SCENARIOS: Scenario[] = [
 		request: {
 			destination: "Kyoto",
 			month: 4,
-			mustSees: ["Fushimi Inari Taisha", "Kiyomizu-dera", "Arashiyama Bamboo Grove"],
+			mustSees: ["Fushimi Inari Taisha", "Kinkaku-ji", "Arashiyama Bamboo Grove"],
 			favorites: ["Spirited Away", "Ryuichi Sakamoto"],
 			vibes: ["matcha", "temples", "quiet"],
 			flexibility: "booked",
@@ -59,13 +59,13 @@ export const SCENARIOS: Scenario[] = [
 	},
 	{
 		id: "paris-june",
-		title: "Montmartre in June",
-		blurb: "Sacré-Cœur and the Eiffel Tower in early summer.",
-		context: "Montmartre is on Fodor's No List 2026.",
+		title: "Paris in June",
+		blurb: "The Eiffel Tower and the Arc de Triomphe in early summer.",
+		context: "Fodor's No List 2026 includes Montmartre.",
 		request: {
 			destination: "Paris",
 			month: 6,
-			mustSees: ["Sacré-Cœur Basilica", "Eiffel Tower"],
+			mustSees: ["Eiffel Tower", "Arc de Triomphe", "Sacré-Cœur Basilica"],
 			favorites: ["Amélie", "Serge Gainsbourg"],
 			vibes: ["natural wine", "art", "quiet"],
 			flexibility: "booked",
@@ -76,12 +76,12 @@ export const SCENARIOS: Scenario[] = [
 	{
 		id: "barcelona-july",
 		title: "Barcelona in July",
-		blurb: "Gaudí's icons at the height of summer.",
+		blurb: "Gaudí's houses and La Boqueria at the height of summer.",
 		context: "Barcelona was on Fodor's No List 2025.",
 		request: {
 			destination: "Barcelona",
 			month: 7,
-			mustSees: ["Sagrada Família", "Park Güell"],
+			mustSees: ["Park Güell", "Casa Batlló", "La Boqueria"],
 			favorites: ["Vicky Cristina Barcelona", "Rosalía"],
 			vibes: ["architecture", "markets"],
 			flexibility: "flexible",
@@ -108,12 +108,12 @@ export const SCENARIOS: Scenario[] = [
 	{
 		id: "bali-july",
 		title: "Ubud in July",
-		blurb: "Rice terraces and temples in Bali's busiest month.",
+		blurb: "Rice terraces, waterfalls and temples in Bali's busiest month.",
 		context: "Bali was on Fodor's No List 2025.",
 		request: {
 			destination: "Ubud",
 			month: 7,
-			mustSees: ["Tegallalang Rice Terraces", "Sacred Monkey Forest Sanctuary"],
+			mustSees: ["Tegallalang Rice Terraces", "Tegenungan Waterfall", "Goa Gajah"],
 			favorites: ["Eat Pray Love", "Nils Frahm"],
 			vibes: ["rice terraces", "nature", "quiet"],
 			flexibility: "booked",
@@ -129,7 +129,7 @@ export const SCENARIOS: Scenario[] = [
 		request: {
 			destination: "Venice",
 			month: 8,
-			mustSees: ["St Mark's Square", "Rialto Bridge"],
+			mustSees: ["Piazza San Marco", "Rialto Bridge"],
 			favorites: ["Call Me by Your Name", "Antonio Vivaldi"],
 			vibes: ["canals", "wine", "quiet"],
 			flexibility: "flexible",
@@ -140,12 +140,12 @@ export const SCENARIOS: Scenario[] = [
 	{
 		id: "lisbon-june",
 		title: "Lisbon in June",
-		blurb: "Belém and Tram 28 during the festival month.",
+		blurb: "Belém, the castle and Alfama's viewpoints in the festival month.",
 		context: "Lisbon was on Fodor's No List 2025; Expedia pairs Lisbon with Palermo as a dupe.",
 		request: {
 			destination: "Lisbon",
 			month: 6,
-			mustSees: ["Belém Tower", "Tram 28"],
+			mustSees: ["Belém Tower", "Castelo de São Jorge", "Miradouro de Santa Luzia"],
 			favorites: ["Amália Rodrigues", "The Book of Disquiet"],
 			vibes: ["fado", "tiles", "seafood"],
 			flexibility: "flexible",
@@ -161,7 +161,7 @@ export const SCENARIOS: Scenario[] = [
 		request: {
 			destination: "Seoul",
 			month: 10,
-			mustSees: ["Gyeongbokgung Palace", "Bukchon Hanok Village"],
+			mustSees: ["Changdeokgung Palace", "N Seoul Tower", "Bukchon Hanok Village"],
 			favorites: ["Parasite", "Past Lives"],
 			vibes: ["tea", "street food", "palaces"],
 			flexibility: "flexible",

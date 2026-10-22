@@ -92,7 +92,7 @@ export function Narrative({ text, running }: { text: string; running: boolean })
 
 export function FollowUp({ modes, busy, onSend }: { modes?: RunModes; busy: boolean; onSend: (message: string) => void }) {
 	const [text, setText] = useState("");
-	if (modes?.agent !== "claude") {
+	if (modes?.agent !== "llm") {
 		return (
 			<p className="px-1 text-xs text-muted">
 				This deployment runs the scripted planner. Free-form follow-ups switch on with the language model; meanwhile, use the plan controls on each card.

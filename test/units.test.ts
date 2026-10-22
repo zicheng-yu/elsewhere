@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { geohashBounds, geohashCenter, geohashEncode, haversineKm } from "../src/engine/geo.ts";
 import { toSearchParams } from "../src/engine/qloo/client.ts";
-import { heatCellsOf, toLocality, toPlace, toTaste, trendOf } from "../src/engine/qloo/normalize.ts";
+import { compareTraitsOf, heatCellsOf, invalidSignalsOf, toLocality, toPlace, toTaste } from "../src/engine/qloo/normalize.ts";
+import { slimResponse } from "../src/engine/qloo/slim.ts";
 import { buildScore, crowdRelief, proximity } from "../src/engine/scoring.ts";
 import { seasonInfo, seasonScore } from "../src/engine/season.ts";
 import { matchScore } from "../src/engine/text.ts";
 import { percentile } from "../src/shared/format.ts";
-import { attentionExtremes, monthlyAttention } from "../src/shared/trend.ts";
 import type { Locality } from "../src/shared/types.ts";
 
 describe("normalize", () => {
@@ -71,37 +71,85 @@ describe("normalize", () => {
 	});
 });
 
-describe("trend", () => {
-	it("reads weekly points in either percentile scale, oldest first", () => {
-		const hundred = trendOf({
+describe("real response shapes", () => {
+	it("trims bulky fields but keeps what the engine reads", () => {
+		const tag = (id: string, name: string) => ({ tag_id: id, name, type: id.split(":").slice(0, -1).join(":"), value: id });
+		// Character tags count against the cap; season and category tags must survive it.
+		const filler = Array.from({ length: 60 }, (_, i) => tag(`urn:tag:ambience:qloo:mood_${i}`, `Mood ${i}`));
+		const slim = slimResponse({
+			success: true,
 			results: {
-				trending: [
-					{ date: "2026-02-02", population_percentile: 97.5 },
-					{ date: "2026-01-05T00:00:00Z", population_percentile: 99.2 },
+				entities: [
+					{
+						entity_id: "L1",
+						name: "京都市",
+						popularity: 0.99,
+						location: { lat: 35, lon: 135.7 },
+						properties: {
+							boundaries: "POLYGON((0 0, 1 1, 1 0, 0 0))".repeat(1000),
+							akas: [
+								{ language: "ja", value: "京都市" },
+								{ language: "sv", value: "Kyoto" },
+							],
+							ancestors: [{ entity_id: "C1", name: "日本", place: "country", admin_level: 2 }],
+							place: "city",
+						},
+						tags: [
+							...filler,
+							tag("urn:tag:category:place:shinto_shrine", "Shinto shrine"),
+							tag("urn:tag:peak_tourism_month:qloo:april", "April"),
+							tag("urn:tag:off_season_month:qloo:january", "January"),
+							tag("urn:tag:april_event:qloo:hanami", "Hanami"),
+						],
+					},
+				],
+			},
+		}) as { results: { entities: Record<string, unknown>[] } };
+		const entity = slim.results.entities[0] ?? {};
+		expect(JSON.stringify(entity)).not.toContain("POLYGON");
+		const tags = entity.tags as { id: string }[];
+		// Category and season tags survive the cap on other tag families.
+		expect(tags.map((t) => t.id)).toContain("urn:tag:category:place:shinto_shrine");
+		expect(tags.map((t) => t.id)).toContain("urn:tag:peak_tourism_month:qloo:april");
+		expect(tags.map((t) => t.id)).toContain("urn:tag:off_season_month:qloo:january");
+		expect(tags.map((t) => t.id)).toContain("urn:tag:april_event:qloo:hanami");
+		expect(tags.length).toBeLessThan(20);
+		const locality = toLocality(entity);
+		expect(locality?.name).toBe("Kyoto");
+		expect(locality?.country).toBe("日本");
+		expect(locality?.placeType).toBe("city");
+	});
+
+	it("cleans destination names and reads geocodes", () => {
+		const destination = toLocality({
+			entity_id: "D1",
+			name: "Nagoya-shi",
+			subtype: "urn:entity:destination",
+			location: { lat: 35.18, lon: 136.9 },
+			popularity: 0.46,
+			properties: { geocode: { name: "Nagoya", country_code: "jp" } },
+		});
+		expect(destination).toMatchObject({ kind: "destination", name: "Nagoya", countryCode: "JP" });
+		expect(toLocality({ entity_id: "D2", name: "Busan 釜山", types: ["urn:entity:destination"], location: { lat: 35.1, lon: 129 } })?.name).toBe("Busan");
+	});
+
+	it("keeps character traits from compare and drops transport and demographics", () => {
+		const traits = compareTraitsOf({
+			results: {
+				entities: [
+					{ tag_id: "urn:tag:transport:qloo:buses", name: "Buses", subtype: "urn:tag:transport:qloo", query: { score: 0.9 } },
+					{ tag_id: "urn:tag:characteristic:qloo:historic", name: "Historic", subtype: "urn:tag:characteristic:qloo", query: { score: 0.7 } },
+					{ tag_id: "urn:tag:demographic_characteristic:qloo:middle_class", name: "Middle-Class", subtype: "urn:tag:demographic_characteristic:qloo", query: { score: 0.8 } },
+					{ tag_id: "urn:tag:scenery:qloo:rivers", name: "Rivers", subtype: "urn:tag:scenery:qloo", query: { score: 0.6 } },
 				],
 			},
 		});
-		expect(hundred).toEqual([
-			{ date: "2026-01-05", percentile: 0.992 },
-			{ date: "2026-02-02", percentile: 0.975 },
-		]);
-		expect(trendOf({ results: { trending: [{ date: "2026-03-02", population_percentile: 0.5 }] } })).toEqual([{ date: "2026-03-02", percentile: 0.5 }]);
-		expect(trendOf({ results: {} })).toEqual([]);
+		expect(traits).toEqual(["Historic", "Rivers"]);
 	});
 
-	it("averages by calendar month and finds the busiest and quietest", () => {
-		const trend = [
-			{ date: "2025-11-03", percentile: 0.9 },
-			{ date: "2026-01-05", percentile: 0.6 },
-			{ date: "2026-01-12", percentile: 0.8 },
-			{ date: "2026-04-06", percentile: 0.99 },
-		];
-		const months = monthlyAttention(trend);
-		expect(months[0]).toBeCloseTo(0.7);
-		expect(months[1]).toBeUndefined();
-		expect(attentionExtremes(trend)).toEqual({ busiest: 4, quietest: 1 });
-		expect(attentionExtremes([{ date: "2026-01-05", percentile: 0.6 }])).toEqual({});
-		expect(attentionExtremes(undefined)).toEqual({});
+	it("reports signals Qloo did not recognize", () => {
+		expect(invalidSignalsOf({ warnings: [{ type: "not_found", "signal.interests.entities": ["X1"] }] })).toEqual(["X1"]);
+		expect(invalidSignalsOf({ results: {} })).toEqual([]);
 	});
 });
 
@@ -147,14 +195,21 @@ describe("season", () => {
 			{ id: "urn:tag:peak_tourism_month:qloo:april", name: "April", type: "urn:tag:peak_tourism_month:qloo" },
 			{ id: "urn:tag:best_month_for_travel:qloo:may", name: "May", type: "urn:tag:best_month_for_travel:qloo" },
 			{ id: "urn:tag:april_event:qloo:miyako_odori", name: "Miyako Odori", type: "urn:tag:april_event:qloo" },
+			{ id: "urn:tag:april_event_type:qloo:cultural", name: "Cultural", type: "urn:tag:april_event_type:qloo" },
+			{ id: "urn:tag:april_travel_advisory:qloo:allergy_season", name: "Allergy Season", type: "urn:tag:april_travel_advisory:qloo" },
+			{ id: "urn:tag:worst_month_for_travel:qloo:august", name: "August", type: "urn:tag:worst_month_for_travel:qloo" },
 		],
 	};
 
-	it("reads month tags", () => {
+	it("reads month, event and advisory tags", () => {
 		const april = seasonInfo(locality, 4);
-		expect(april).toMatchObject({ isPeak: true, isBestMonth: false, events: ["Miyako Odori"], peakMonths: [4], bestMonths: [5] });
+		// Event types ("Cultural") are categories, not events.
+		expect(april).toMatchObject({ isPeak: true, isBestMonth: false, events: ["Miyako Odori"], advisories: ["Allergy Season"], peakMonths: [4], bestMonths: [5], worstMonths: [8] });
+		expect(april.calendar?.[3]?.events).toEqual(["Miyako Odori"]);
+		expect(seasonInfo(locality, 8).isWorstMonth).toBe(true);
 		expect(seasonScore(april)).toBeLessThan(seasonScore(seasonInfo(locality, 5)) ?? 0);
 		expect(seasonScore(seasonInfo(locality, undefined))).toBeUndefined();
+		expect(seasonInfo(undefined, 4)).toMatchObject({ peakMonths: [], calendar: undefined });
 	});
 });
 

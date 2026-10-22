@@ -10,11 +10,12 @@ import type {
 	PlanSlot,
 	PlanStop,
 	PlanTargetRef,
+	SearchArea,
 	ZoomResult,
 } from "../shared/types.ts";
 import { customsFor } from "./content/customs.ts";
 import { haversineKm, type LatLon } from "./geo.ts";
-import { FOOD_DRINK_TAGS, PLACE_TAG, SIGHT_TAGS, wktPoint, type QlooApi } from "./qloo/endpoints.ts";
+import { isSight, PLACE_TAG, SIGHT_TAGS, type QlooApi } from "./qloo/endpoints.ts";
 import { tasteSignals } from "./zoom/shared.ts";
 
 export interface PlanContext {
@@ -27,9 +28,7 @@ interface ResolvedTarget {
 	kind: "city" | "town";
 	name: string;
 	center: LatLon;
-	/** Locality ID or WKT geometry for Qloo's filter.location. */
-	location: string;
-	radiusM?: number;
+	area: SearchArea;
 	countryCode?: string;
 	population?: number;
 	/** Places that must appear in the plan (the chosen quiet twins). */
@@ -51,7 +50,7 @@ function resolveTarget(ctx: PlanContext, ref: PlanTargetRef): ResolvedTarget {
 		kind: "city",
 		name: home.name,
 		center: home,
-		location: home.id,
+		area: ctx.hotspot.area,
 		countryCode: home.countryCode,
 		population: home.population,
 		mustInclude: twins.map((t) => t.twin),
@@ -77,8 +76,7 @@ function resolveTarget(ctx: PlanContext, ref: PlanTargetRef): ResolvedTarget {
 			kind: "town",
 			name: town.town.name,
 			center: town.town,
-			location: wktPoint(town.town.lat, town.town.lon),
-			radiusM: 7000,
+			area: { lat: town.town.lat, lon: town.town.lon, radiusKm: 6 },
 			countryCode: town.places[0]?.countryCode ?? home.countryCode,
 			mustInclude: town.places.slice(0, 2),
 			reasons: new Map(town.places.slice(0, 2).map((p) => [p.id, `Shares the feel of ${home.name}'s crowded sights`])),
@@ -91,7 +89,7 @@ function resolveTarget(ctx: PlanContext, ref: PlanTargetRef): ResolvedTarget {
 		kind: "city",
 		name: twin.city.name,
 		center: twin.city,
-		location: twin.city.id,
+		area: { lat: twin.city.lat, lon: twin.city.lon, radiusKm: 8 },
 		countryCode: twin.city.countryCode,
 		population: twin.city.population,
 		mustInclude: [],
@@ -179,34 +177,33 @@ export async function planLocal(ctx: PlanContext, ref: PlanTargetRef, prefs: Pla
 		await Promise.all((prefs.extraVibes ?? []).map((word) => api.searchTags(word, 1).catch(() => [])))
 	).flat();
 	const signalTagIds = [...new Set([...taste.signalTagIds, ...extraTags.map((t) => t.id)])];
-	const signalIds = taste.signalIds.length > 0 ? taste.signalIds : target.mustInclude.map((p) => p.id);
+	// With no stated taste, the crowded originals stand for it: same soul, elsewhere.
+	const fallbackIds = target.mustInclude.length > 0 ? target.mustInclude.map((p) => p.id) : hotspot.crowdedSpots.map((p) => p.id);
 	const signals = {
-		signalIds: signalIds.length > 0 || signalTagIds.length > 0 ? signalIds : [hotspot.locality.id],
+		signalIds: taste.signalIds.length > 0 || signalTagIds.length > 0 ? taste.signalIds : fallbackIds,
 		signalTagIds,
 	};
-	const area = { location: target.location, radiusM: target.radiusM };
+	const area = { area: target.area };
 	const quieter = prefs.quieter ?? false;
 
-	const [heat, sights, food, cafes, bars] = await Promise.all([
+	const [heat, sightResults, food, cafes, bars] = await Promise.all([
 		api.heatmap({ ...area, ...signals }).catch(() => [] as HeatCell[]),
-		api.places(
-			{ ...signals, ...area, tagIds: SIGHT_TAGS, excludeTagIds: FOOD_DRINK_TAGS, popularityMax: quieter ? 0.8 : 0.96, take: 14 },
-			"Sights that fit your taste",
-		),
+		api.places({ ...signals, ...area, tagIds: SIGHT_TAGS, popularityMax: quieter ? 0.85 : 0.97, take: 16 }, "Sights that fit your taste"),
 		api.places(
 			{
 				...signals,
 				...area,
 				tagIds: [PLACE_TAG.restaurant],
 				excludeTagIds: [PLACE_TAG.cafe, PLACE_TAG.bar, PLACE_TAG.hotel],
-				popularityMax: quieter ? 0.85 : undefined,
+				popularityMax: quieter ? 0.9 : undefined,
 				take: 8,
 			},
 			"Where to eat",
 		),
-		api.places({ ...signals, ...area, tagIds: [PLACE_TAG.cafe], take: 6 }, "Cafés and teahouses"),
-		api.places({ ...signals, ...area, tagIds: [PLACE_TAG.bar], take: 4 }, "Evening spots"),
+		api.places({ ...signals, ...area, tagIds: [PLACE_TAG.cafe], excludeTagIds: [PLACE_TAG.hotel], take: 6 }, "Cafés and teahouses"),
+		api.places({ ...signals, ...area, tagIds: [PLACE_TAG.bar], excludeTagIds: [PLACE_TAG.hotel], take: 4 }, "Evening spots"),
 	]);
+	const sights = sightResults.filter(isSight);
 
 	const all = [...target.mustInclude, ...sights, ...food, ...cafes, ...bars];
 	const stay = stayArea(heat, all);

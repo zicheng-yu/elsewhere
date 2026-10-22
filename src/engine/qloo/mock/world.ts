@@ -88,49 +88,70 @@ export const FACET_SYNONYMS: Record<Facet, string[]> = {
 	outdoors: ["hiking", "outdoors", "cycling", "trekking", "adventure"],
 };
 
-const TAG = {
-	attraction: "urn:tag:genre:place:tourist_attraction",
-	landmark: "urn:tag:genre:place:historical_landmark",
-	museum: "urn:tag:genre:place:museum",
-	park: "urn:tag:genre:place:park",
-	gallery: "urn:tag:genre:place:art_gallery",
-	castle: "urn:tag:genre:place:castle",
-	restaurant: "urn:tag:genre:place:restaurant",
-	cafe: "urn:tag:genre:place:restaurant:cafe",
-	bar: "urn:tag:genre:place:restaurant:bar",
-	hotel: "urn:tag:genre:place:hotel",
-} as const;
+const category = (name: string) => `urn:tag:category:place:${name}`;
 
-/** Genre tags per synthetic category, mirroring the documented place taxonomy. */
+/** Category tags per synthetic category, mirroring Qloo's place taxonomy (`urn:tag:category:place:*`). */
 export const CATEGORY_TAGS: Record<PlaceCategory, string[]> = {
-	shrine: [TAG.attraction],
-	temple: [TAG.attraction],
-	church: [TAG.attraction, TAG.landmark],
-	garden: [TAG.park, TAG.attraction],
-	park: [TAG.park],
-	museum: [TAG.museum],
-	gallery: [TAG.gallery, TAG.museum],
-	landmark: [TAG.landmark, TAG.attraction],
-	castle: [TAG.castle, TAG.landmark],
-	palace: [TAG.landmark, TAG.attraction],
-	bridge: [TAG.landmark, TAG.attraction],
-	square: [TAG.landmark, TAG.attraction],
-	street: [TAG.attraction],
-	neighborhood: [TAG.attraction],
-	market: [TAG.attraction],
-	viewpoint: [TAG.attraction],
-	village: [TAG.attraction],
-	beach: [TAG.attraction],
-	lake: [TAG.attraction],
-	waterfall: [TAG.attraction],
-	trail: [TAG.attraction],
-	rice_terrace: [TAG.attraction],
-	onsen: [TAG.attraction],
-	teahouse: [TAG.restaurant, TAG.cafe],
-	cafe: [TAG.restaurant, TAG.cafe],
-	restaurant: [TAG.restaurant],
-	bar: [TAG.restaurant, TAG.bar],
-	hotel: [TAG.hotel],
+	shrine: [category("tourist_attraction"), category("shinto_shrine"), category("place_of_worship")],
+	temple: [category("tourist_attraction"), category("buddhist_temple"), category("place_of_worship")],
+	church: [category("tourist_attraction"), category("historical_landmark"), category("church")],
+	garden: [category("tourist_attraction"), category("garden")],
+	park: [category("park")],
+	museum: [category("tourist_attraction"), category("museum")],
+	gallery: [category("museum"), category("art_museum")],
+	landmark: [category("tourist_attraction"), category("historical_landmark")],
+	castle: [category("tourist_attraction"), category("historical_landmark"), category("castle")],
+	palace: [category("tourist_attraction"), category("historical_landmark"), category("palace")],
+	bridge: [category("tourist_attraction"), category("historical_landmark"), category("bridge")],
+	square: [category("tourist_attraction"), category("historical_landmark"), category("plaza")],
+	street: [category("tourist_attraction"), category("historical_landmark")],
+	neighborhood: [category("tourist_attraction")],
+	market: [category("tourist_attraction"), category("market")],
+	viewpoint: [category("tourist_attraction"), category("scenic_spot")],
+	village: [category("tourist_attraction"), category("scenic_spot")],
+	beach: [category("tourist_attraction"), category("beach")],
+	lake: [category("tourist_attraction"), category("scenic_spot"), category("lake")],
+	waterfall: [category("tourist_attraction"), category("scenic_spot"), category("waterfall")],
+	trail: [category("tourist_attraction"), category("hiking_area")],
+	rice_terrace: [category("tourist_attraction"), category("scenic_spot")],
+	onsen: [category("tourist_attraction"), category("hot_spring")],
+	teahouse: [category("cafe"), category("tea_house")],
+	cafe: [category("cafe")],
+	restaurant: [category("restaurant")],
+	bar: [category("bar")],
+	hotel: [category("hotel")],
+};
+
+/** Primary genre per synthetic category: [genre slug, display name]. */
+const PRIMARY_GENRE: Record<PlaceCategory, [string, string]> = {
+	shrine: ["shinto_shrine", "Shinto shrine"],
+	temple: ["buddhist_temple", "Buddhist temple"],
+	church: ["church", "Church"],
+	garden: ["garden", "Garden"],
+	park: ["park", "Park"],
+	museum: ["museum", "Museum"],
+	gallery: ["art_museum", "Art museum"],
+	landmark: ["historical_landmark", "Historical landmark"],
+	castle: ["castle", "Castle"],
+	palace: ["palace", "Palace"],
+	bridge: ["bridge", "Bridge"],
+	square: ["plaza", "Plaza"],
+	street: ["historical_landmark", "Historic street"],
+	neighborhood: ["neighborhood", "Neighborhood"],
+	market: ["market", "Market"],
+	viewpoint: ["scenic_spot", "Scenic spot"],
+	village: ["village", "Village"],
+	beach: ["beach", "Beach"],
+	lake: ["lake", "Lake"],
+	waterfall: ["waterfall", "Waterfall"],
+	trail: ["hiking_area", "Hiking area"],
+	rice_terrace: ["scenic_spot", "Rice terraces"],
+	onsen: ["hot_spring", "Hot spring"],
+	teahouse: ["tea_house", "Tea house"],
+	cafe: ["cafe", "Cafe"],
+	restaurant: ["restaurant", "Restaurant"],
+	bar: ["bar", "Bar"],
+	hotel: ["hotel", "Hotel"],
 };
 
 export const CATEGORY_LABELS: Record<PlaceCategory, string> = {
@@ -164,18 +185,6 @@ export const CATEGORY_LABELS: Record<PlaceCategory, string> = {
 	hotel: "Hotel",
 };
 
-const GENRE_LABELS: Record<string, string> = {
-	[TAG.attraction]: "Tourist attraction",
-	[TAG.landmark]: "Historical landmark",
-	[TAG.museum]: "Museum",
-	[TAG.park]: "Park",
-	[TAG.gallery]: "Art gallery",
-	[TAG.castle]: "Castle",
-	[TAG.restaurant]: "Restaurant",
-	[TAG.cafe]: "Café",
-	[TAG.bar]: "Bar",
-	[TAG.hotel]: "Hotel",
-};
 
 /** Cultural macro-regions. Real taste graphs cluster regionally; the synthetic locality affinity mirrors that. */
 const MACRO_REGION: Record<string, string> = {
@@ -289,10 +298,12 @@ interface Indexed {
 
 export type IndexedEntity =
 	| (Indexed & { kind: "locality"; data: WorldLocality })
+	| (Indexed & { kind: "destination"; data: WorldLocality })
 	| (Indexed & { kind: "place"; data: WorldPlace; locality: WorldLocality })
 	| (Indexed & { kind: "taste"; data: WorldTaste });
 
 export type LocalityEntity = Extract<IndexedEntity, { kind: "locality" }>;
+export type DestinationEntity = Extract<IndexedEntity, { kind: "destination" }>;
 export type PlaceEntity = Extract<IndexedEntity, { kind: "place" }>;
 export type TasteEntityIndexed = Extract<IndexedEntity, { kind: "taste" }>;
 
@@ -328,25 +339,29 @@ function localityTags(locality: WorldLocality): RawTag[] {
 	return tags;
 }
 
+function humanize(id: string): string {
+	const words = (id.split(":").at(-1) ?? id).replace(/_/g, " ");
+	return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function placeTags(place: WorldPlace): RawTag[] {
-	const tags: RawTag[] = CATEGORY_TAGS[place.category].map((id) => ({
-		id,
-		name: GENRE_LABELS[id] ?? CATEGORY_LABELS[place.category],
-		type: "urn:tag:genre:place",
-	}));
-	tags.push({
-		id: `urn:tag:category:place:${place.category}`,
-		name: CATEGORY_LABELS[place.category],
-		type: "urn:tag:category:place",
-	});
+	const tags: RawTag[] = CATEGORY_TAGS[place.category].map((id) => ({ id, name: humanize(id), type: "urn:tag:category:place" }));
+	const [genre, genreName] = PRIMARY_GENRE[place.category];
+	tags.push({ id: `urn:tag:genre:place:${genre}`, name: genreName, type: "urn:tag:genre:place" });
 	for (const facet of topFacets(place.vector, 0.5)) {
 		tags.push({ id: facetTagId(facet), name: FACET_LABELS[facet], type: "urn:tag:keyword:qloo" });
 	}
 	return tags;
 }
 
+function destinationTags(locality: WorldLocality): RawTag[] {
+	return locality.traits.map((trait) => ({ id: `urn:tag:genre:destination:${slug(trait)}`, name: trait, type: "urn:tag:genre:destination" }));
+}
+
 export class WorldIndex {
 	readonly localities: LocalityEntity[];
+	/** Travel-destination entities: one per locality, as Qloo keeps both kinds. */
+	readonly destinations: DestinationEntity[];
 	readonly places: PlaceEntity[];
 	readonly tastes: TasteEntityIndexed[];
 	readonly byId = new Map<string, IndexedEntity>();
@@ -387,6 +402,12 @@ export class WorldIndex {
 				},
 			];
 		});
+		this.destinations = this.localities.map((locality) => ({
+			...locality,
+			kind: "destination" as const,
+			id: syntheticId(`destination:${locality.data.key}`),
+			tagIds: destinationTags(locality.data).map((t) => t.id),
+		}));
 		this.tastes = data.tastes.map((data) => ({
 			kind: "taste",
 			id: syntheticId(`taste:${data.key}`),
@@ -395,7 +416,7 @@ export class WorldIndex {
 			normName: normalizeName(data.name),
 			tagIds: topFacets(data.vector, 0.5).map(facetTagId),
 		}));
-		for (const entity of [...this.localities, ...this.places, ...this.tastes]) {
+		for (const entity of [...this.localities, ...this.destinations, ...this.places, ...this.tastes]) {
 			this.byId.set(entity.id, entity);
 		}
 	}
@@ -404,49 +425,77 @@ export class WorldIndex {
 		return this.localities.find((entity) => entity.data.key === key);
 	}
 
-	rawLocality(entity: LocalityEntity, affinity?: number): Record<string, unknown> {
+	/** Search results carry only the genre tag; insights results carry months, events and culture. */
+	rawLocality(entity: LocalityEntity, affinity?: number, full = true): Record<string, unknown> {
 		const { data } = entity;
+		const tags = this.#localityTags.get(entity.id) ?? [];
 		return {
 			entity_id: entity.id,
 			name: data.name,
 			type: "urn:entity",
 			subtype: "urn:entity:locality",
-			place: "city",
-			admin_level: 5,
-			population: data.population,
-			lat: data.lat,
-			lon: data.lon,
-			geohash: geohashEncode(data.lat, data.lon, 12),
+			types: ["urn:entity:locality"],
+			location: { lat: data.lat, lon: data.lon, geohash: geohashEncode(data.lat, data.lon, 12) },
 			popularity: data.popularity,
-			...(affinity === undefined ? {} : { affinity, query: { affinity } }),
+			...(affinity === undefined ? {} : { query: { affinity } }),
 			disambiguation: `${data.name}, ${data.region}, ${data.country}`,
-			country_code: data.countryCode,
-			tags: this.#localityTags.get(entity.id) ?? [],
+			properties: {
+				place: "city",
+				admin_level: 7,
+				population: data.population,
+				ancestors: [
+					{ entity_id: syntheticId(`region:${data.region}`), name: data.region, place: "state", admin_level: 4 },
+					{ entity_id: syntheticId(`country:${data.countryCode}`), name: data.country, place: "country", admin_level: 2 },
+				],
+				akas: [{ language: "en", value: data.name }],
+			},
+			tags: full ? tags : tags.filter((tag) => tag.type === "urn:tag:genre:locality"),
+		};
+	}
+
+	rawDestination(entity: DestinationEntity, affinity?: number): Record<string, unknown> {
+		const { data } = entity;
+		return {
+			entity_id: entity.id,
+			name: data.name,
+			type: "urn:entity",
+			subtype: "urn:entity:destination",
+			types: ["urn:entity:destination"],
+			location: { lat: data.lat, lon: data.lon, geohash: geohashEncode(data.lat, data.lon, 12) },
+			popularity: data.popularity,
+			...(affinity === undefined ? {} : { query: { affinity } }),
+			properties: { country: data.country, geocode: { name: data.name, admin1_region: data.region, country_code: data.countryCode } },
+			tags: destinationTags(data),
 		};
 	}
 
 	rawPlace(entity: PlaceEntity, affinity?: number, extra: Record<string, unknown> = {}): Record<string, unknown> {
 		const { data, locality } = entity;
+		const [genre, genreName] = PRIMARY_GENRE[data.category];
 		return {
 			entity_id: entity.id,
 			name: data.name,
 			type: "urn:entity",
 			subtype: "urn:entity:place",
-			lat: data.lat,
-			lon: data.lon,
-			geohash: geohashEncode(data.lat, data.lon, 12),
-			address: [data.neighborhood, locality.name].filter(Boolean).join(", "),
-			city: locality.name,
-			neighborhood: data.neighborhood,
-			admin1_region: locality.region,
-			country: locality.country,
-			country_code: locality.countryCode,
-			business_rating: data.rating,
-			price_level: data.priceLevel,
-			is_closed: false,
+			types: ["urn:entity:place"],
+			location: { lat: data.lat, lon: data.lon, geohash: geohashEncode(data.lat, data.lon, 12) },
 			popularity: data.popularity,
-			...(affinity === undefined ? {} : { affinity, query: { affinity, ...extra } }),
+			...(affinity === undefined ? {} : { query: { affinity, ...extra } }),
 			disambiguation: [data.neighborhood, locality.name, locality.country].filter(Boolean).join(", "),
+			properties: {
+				geocode: {
+					name: data.neighborhood ?? locality.name,
+					city: locality.name,
+					admin1_region: locality.region,
+					country: locality.country,
+					country_code: locality.countryCode,
+				},
+				neighborhood: data.neighborhood,
+				primary_genre: { id: `urn:tag:genre:place:${genre}`, name: genreName },
+				business_rating: data.rating,
+				price_level: data.priceLevel,
+				is_closed: false,
+			},
 			tags: this.#placeTags.get(entity.id) ?? [],
 		};
 	}
@@ -469,8 +518,9 @@ export class WorldIndex {
 		};
 	}
 
-	raw(entity: IndexedEntity, affinity?: number): Record<string, unknown> {
-		if (entity.kind === "locality") return this.rawLocality(entity, affinity);
+	raw(entity: IndexedEntity, affinity?: number, options: { search?: boolean } = {}): Record<string, unknown> {
+		if (entity.kind === "locality") return this.rawLocality(entity, affinity, !options.search);
+		if (entity.kind === "destination") return this.rawDestination(entity, affinity);
 		if (entity.kind === "place") return this.rawPlace(entity, affinity);
 		return this.rawTaste(entity, affinity);
 	}

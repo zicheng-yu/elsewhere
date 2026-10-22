@@ -1,4 +1,4 @@
-# Copy to .dev.vars for local development (git-ignored). Never commit real keys.
-# With both keys set, also switch QLOO_MODE to "live" and AGENT_MODE to "claude" in cloudflare.config.ts.
+# Copy to .dev.vars.live for local development with live data (git-ignored). Never commit real keys.
+# `npm run dev:live` (cf dev --mode live) reads it and switches to live Qloo data and the LLM agent.
 QLOO_API_KEY=
-ANTHROPIC_API_KEY=
+OPENROUTER_API_KEY=

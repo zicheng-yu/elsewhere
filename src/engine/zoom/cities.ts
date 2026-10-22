@@ -1,191 +1,166 @@
 /** Levels 3 and 4 — a twin city in the same country, or beyond its borders. */
-import { km, monthName, percentile } from "../../shared/format.ts";
-import type { CityTwin, Locality, Place, SeasonInfo, ZoomResult } from "../../shared/types.ts";
+import { km, percentile } from "../../shared/format.ts";
+import type { CityTwin, Locality, ZoomResult } from "../../shared/types.ts";
 import { haversineKm } from "../geo.ts";
-import { PLACE_TAG, wktCircles, type QlooApi } from "../qloo/endpoints.ts";
-import { buildScore, crowdRelief, mean } from "../scoring.ts";
-import { seasonInfo, seasonScore } from "../season.ts";
+import { isSight, SIGHT_TAGS } from "../qloo/endpoints.ts";
+import { buildScore, crowdRelief } from "../scoring.ts";
 import { matchScore, normalizeName } from "../text.ts";
-import { sharedTraits, traitNames } from "../traits.ts";
-import { DAY_TRIP_RADIUS_KM } from "./region.ts";
 import { tasteSignals, type ZoomContext } from "./shared.ts";
 
-/** Below this distance a candidate is part of the hotspot's own metro area (covered by day trips). */
-const SAME_METRO_KM = 40;
-const SMALL_COMMUNITY = 20_000;
-/** Villages are day trips, not twin cities. */
-const MIN_TWIN_POPULATION = 5_000;
+/** A domestic twin closer than this is a day trip, not a different city to base a trip in. */
+const MIN_COUNTRY_TWIN_KM = 100;
+/** Candidates this close to a more similar one are the same city (wards, districts, suburbs). */
+const SAME_CITY_KM = 15;
+const HIGHLIGHT_RADIUS_KM = 8;
 
 function sameCountry(a: Locality, b: Locality): boolean {
 	if (a.countryCode && b.countryCode) return a.countryCode.toUpperCase() === b.countryCode.toUpperCase();
 	return normalizeName(a.country ?? "") === normalizeName(b.country ?? "");
 }
 
-function isCityLike(locality: Locality): boolean {
-	return !locality.placeType || !/neighbou?rhood|suburb|district/.test(locality.placeType);
-}
-
-/** Jaccard overlap of character traits, used when a candidate has no Qloo affinity (agent-proposed). */
-function traitOverlap(a: Locality, b: Locality): number | undefined {
-	const left = new Set(traitNames(a.tags).map((t) => t.toLowerCase()));
-	const right = new Set(traitNames(b.tags).map((t) => t.toLowerCase()));
-	if (left.size === 0 || right.size === 0) return undefined;
-	let shared = 0;
-	for (const trait of left) if (right.has(trait)) shared++;
-	return shared / (left.size + right.size - shared);
-}
-
-const CITY_RADIUS_KM = 10;
-
-/**
- * Taste fit for every candidate city in ONE query, so affinities are comparable
- * across cities (Qloo scores are relative to each query). The query covers all
- * candidates with a MULTIPOLYGON and caps results per city with diversify.by.
- */
-async function placesByCity(
-	api: QlooApi,
-	cities: Locality[],
-	signals: { signalIds: string[]; signalTagIds?: string[] },
-): Promise<Map<string, Place[]>> {
-	const byCity = new Map<string, Place[]>(cities.map((city) => [city.id, []]));
-	if (cities.length === 0) return byCity;
-	const places = await api
-		.places(
-			{
-				...signals,
-				location: wktCircles(cities.map((c) => ({ lat: c.lat, lon: c.lon, radiusKm: CITY_RADIUS_KM }))),
-				excludeTagIds: [PLACE_TAG.hotel],
-				diversifyBy: "properties.geocode.city",
-				diversifyTake: 5,
-				take: 50,
-			},
-			"Score every candidate city against your taste in one query",
-		)
-		.catch(() => [] as Place[]);
-	for (const place of places) {
-		let nearest: Locality | undefined;
-		let best = Number.POSITIVE_INFINITY;
-		for (const city of cities) {
-			const d = haversineKm(place, city);
-			if (d < best) {
-				best = d;
-				nearest = city;
-			}
-		}
-		if (nearest && best <= CITY_RADIUS_KM * 1.5) byCity.get(nearest.id)?.push(place);
+/** Keep the most similar entry of each cluster (Tokyo over Shinjuku and Minato). Input is sorted by affinity. */
+function dedupeClusters(candidates: Locality[]): Locality[] {
+	const kept: Locality[] = [];
+	for (const candidate of candidates) {
+		if (!kept.some((other) => haversineKm(other, candidate) < SAME_CITY_KM)) kept.push(candidate);
 	}
-	return byCity;
+	return kept;
 }
 
-function seasonSource(info: SeasonInfo): string {
-	if (info.month === undefined) return "No travel month given";
-	const month = monthName(info.month);
-	if (info.isPeak) return `${month} is a peak tourism month here (Qloo month tags)`;
-	if (info.isBestMonth) return `${month} is one of the best months to visit (Qloo month tags)`;
-	if (info.isOffSeason) return `${month} is off-season here (Qloo month tags)`;
-	return `${month} is a shoulder month here (Qloo month tags)`;
+/** Shared genres from the destinations' own tags, when the compare endpoint finds nothing. */
+function genreOverlap(a: Locality, b: Locality): string[] {
+	const genres = new Set(a.tags.filter((t) => t.type.includes("genre:destination")).map((t) => t.name));
+	return b.tags.filter((t) => t.type.includes("genre:destination") && genres.has(t.name)).map((t) => t.name);
 }
 
 export async function findCityTwins(
 	ctx: ZoomContext,
 	level: "country" | "world",
-	options: { extraCandidates?: string[]; lovedLocalityIds?: string[]; maxResults?: number } = {},
+	options: { extraCandidates?: string[]; maxResults?: number } = {},
 ): Promise<Extract<ZoomResult, { level: "country" | "world" }>> {
-	const { api, hotspot, month } = ctx;
+	const { api, hotspot } = ctx;
 	const home = hotspot.locality;
+	const where = level === "country" ? `elsewhere in ${home.country ?? "the country"}` : "beyond the border";
+	if (!hotspot.destinationId) {
+		return { level, items: [], note: `Qloo has no destination entry for ${home.name}, so twin cities are unavailable.` };
+	}
 
 	const passes = (candidate: Locality) => {
 		const distanceKm = haversineKm(candidate, home);
-		const population = candidate.population ?? Number.POSITIVE_INFINITY;
 		return (
-			candidate.id !== home.id &&
-			isCityLike(candidate) &&
-			population >= MIN_TWIN_POPULATION &&
-			distanceKm >= SAME_METRO_KM &&
-			// A small community within day-trip range is a day trip, not a twin city.
-			!(distanceKm < DAY_TRIP_RADIUS_KM && population < SMALL_COMMUNITY) &&
-			(level === "country" ? sameCountry(candidate, home) : !sameCountry(candidate, home))
+			candidate.id !== hotspot.destinationId &&
+			(level === "country" ? sameCountry(candidate, home) && distanceKm >= MIN_COUNTRY_TWIN_KM : !sameCountry(candidate, home)) &&
+			// A twin should take pressure off, not add to it.
+			(candidate.popularity ?? 0) < (home.popularity ?? 1)
 		);
 	};
 
-	const similar = await api.similarLocalities({ signalIds: [home.id, ...(options.lovedLocalityIds ?? [])], take: 50 });
-	const shortlist: { locality: Locality; origin: "qloo" | "agent" }[] = similar
+	// The same query serves both levels, so the client sends it once. Some
+	// destinations from search are not valid insights signals (Seoul); then
+	// the city's crowded sights stand for it.
+	const spotIds = hotspot.crowdedSpots.map((s) => s.id);
+	const similarTo = async (offset?: number) => {
+		const page = (signalIds: string[]) => api.destinations({ signalIds, take: 50, offset, note: offset ? "More destinations with a similar soul" : undefined });
+		const byDestination = await page([hotspot.destinationId ?? ""]).catch(() => []);
+		return byDestination.length > 0 || spotIds.length === 0 ? byDestination : page(spotIds).catch(() => []);
+	};
+	let similar = await similarTo();
+	if (level === "world" && similar.filter((c) => c.countryCode && home.countryCode && c.countryCode !== home.countryCode).length < 5) {
+		// Big countries fill the first page with domestic look-alikes.
+		similar = [...similar, ...(await similarTo(50))];
+	}
+	const shortlist: { city: Locality; origin: "qloo" | "agent" }[] = dedupeClusters(
+		similar.filter((c) => c.id !== hotspot.destinationId && haversineKm(c, home) >= SAME_CITY_KM),
+	)
 		.filter(passes)
-		.sort((a, b) => (b.affinity ?? 0) - (a.affinity ?? 0))
-		.slice(0, 7)
-		.map((locality) => ({ locality, origin: "qloo" }));
+		.slice(0, 10)
+		.map((city) => ({ city, origin: "qloo" }));
 
 	for (const name of options.extraCandidates ?? []) {
-		const found = await api.searchLocalities(name, 3).catch(() => []);
-		const match = found.find((l) => matchScore(name, l.name) >= 0.8);
-		if (match && passes(match) && !shortlist.some((s) => s.locality.id === match.id)) {
-			shortlist.push({ locality: match, origin: "agent" });
+		const found = await api.searchDestinations(name, 3).catch(() => []);
+		const match = found.find((c) => matchScore(name, c.name) >= 0.8);
+		if (match && passes(match) && !shortlist.some((s) => s.city.id === match.id)) {
+			shortlist.push({ city: match, origin: "agent" });
 		}
 	}
+	if (shortlist.length === 0) return { level, items: [], note: `No twin cities found ${where}.` };
 
-	const { signalIds, signalTagIds } = tasteSignals(hotspot);
-	const hasTaste = signalIds.length + signalTagIds.length > 0;
-	const cityPlaces = await placesByCity(
-		api,
-		shortlist.map((s) => s.locality),
-		hasTaste ? { signalIds, signalTagIds } : { signalIds: [home.id] },
-	);
+	// Agent-proposed cities have no affinity to the home city yet; score the whole shortlist against it.
+	const needSoul = shortlist.filter((s) => s.city.affinity === undefined).map((s) => s.city.id);
+	const { signalIds } = tasteSignals(hotspot);
+	const [soulScores, tasteScores] = await Promise.all([
+		needSoul.length > 0
+			? api.destinations({ signalIds: [hotspot.destinationId], resultIds: needSoul, take: needSoul.length, note: "Score proposed cities against the original" })
+			: Promise.resolve([]),
+		signalIds.length > 0
+			? api
+					.destinations({ signalIds, resultIds: shortlist.map((s) => s.city.id), take: shortlist.length, note: "Score candidate cities against your taste" })
+					.catch(() => [])
+			: Promise.resolve([]),
+	]);
+	const soulById = new Map(soulScores.map((c) => [c.id, c.affinity]));
+	const tasteById = new Map(tasteScores.map((c) => [c.id, c.affinity]));
 
-	const items: CityTwin[] = await Promise.all(
-		shortlist.map(async ({ locality, origin }) => {
-			const details =
-				locality.tags.length > 0 ? locality : ((await api.localityDetails(locality.id).catch(() => undefined)) ?? locality);
-			const city = { ...locality, ...details, affinity: locality.affinity };
-			const places = (cityPlaces.get(city.id) ?? []).sort((a, b) => (b.affinity ?? 0) - (a.affinity ?? 0));
-			const season = seasonInfo(city, month);
-			const score = buildScore(level, {
-				soul: {
-					value: city.affinity ?? traitOverlap(home, city),
-					source:
-						city.affinity !== undefined
-							? `Qloo locality affinity to ${home.name}`
-							: `Shared character traits with ${home.name} (proposed by the agent)`,
-				},
-				taste: {
-					value: hasTaste && places.length > 0 ? mean(places.slice(0, 5).map((p) => p.affinity ?? Number.NaN)) : undefined,
-					source: `Mean Qloo affinity of ${city.name}'s top places to your favorites`,
-				},
-				crowd: {
-					value: crowdRelief(home.popularity, city.popularity),
-					source: `Popularity ${percentile(home.popularity)} → ${percentile(city.popularity)} percentile`,
-				},
-				season: { value: seasonScore(season), source: seasonSource(season) },
-			});
-			return {
-				id: `city:${city.id}`,
-				city,
-				score,
-				distanceKm: haversineKm(home, city),
-				sharedTraits: sharedTraits(home.tags, city.tags),
-				season,
-				highlights: places.slice(0, 4),
-				smallCommunity: (city.population ?? Number.POSITIVE_INFINITY) < SMALL_COMMUNITY,
-				origin,
-			};
-		}),
-	);
+	const items: CityTwin[] = shortlist.map(({ city, origin }) => {
+		const soul = city.affinity ?? soulById.get(city.id);
+		const score = buildScore(level, {
+			soul: { value: soul, source: `Qloo destination affinity to ${home.name}` },
+			taste: { value: tasteById.get(city.id), source: "Qloo destination affinity to your favorites" },
+			crowd: {
+				value: crowdRelief(home.popularity, city.popularity),
+				source: `Destination popularity ${percentile(home.popularity)} → ${percentile(city.popularity)} percentile`,
+			},
+		});
+		return {
+			id: `city:${city.id}`,
+			city: { ...city, affinity: soul },
+			score,
+			distanceKm: haversineKm(home, city),
+			sharedTraits: genreOverlap(home, city).slice(0, 4),
+			highlights: [],
+			smallCommunity: false,
+			origin,
+		};
+	});
 
 	items.sort((a, b) => b.score.total - a.score.total);
-	const top = items.slice(0, options.maxResults ?? 3);
+	const maxResults = options.maxResults ?? 3;
 
-	// Fill in shared traits from Qloo's compare endpoint where tags alone found too few.
+	// What the traveler would actually do there. The places also vouch for the
+	// destination: an entry whose sights all sit in another city is mislocated.
+	const highlightSignals = signalIds.length > 0 ? signalIds : hotspot.crowdedSpots.map((s) => s.id);
+	const contenders = items.slice(0, maxResults + 2);
 	await Promise.all(
-		top.map(async (item) => {
-			if (item.sharedTraits.length >= 2) return;
-			const traits = await api.compare([home.id], [item.city.id], 6).catch(() => []);
-			item.sharedTraits = [...new Set([...item.sharedTraits, ...traits])].slice(0, 4);
+		contenders.map(async (item) => {
+			const places = await api
+				.places(
+					{
+						signalIds: highlightSignals,
+						area: { lat: item.city.lat, lon: item.city.lon, radiusKm: HIGHLIGHT_RADIUS_KM },
+						tagIds: SIGHT_TAGS,
+						take: 6,
+					},
+					`What ${item.city.name} has for you`,
+				)
+				.catch(() => []);
+			item.highlights = places.filter(isSight).slice(0, 4);
+		}),
+	);
+	const located = (item: CityTwin) =>
+		item.highlights.length === 0 || item.highlights.some((p) => !p.city || matchScore(item.city.name, p.city) >= 0.6);
+	const top = contenders.filter(located).slice(0, maxResults);
+
+	// The character each leading twin shares with home.
+	await Promise.all(
+		top.slice(0, 2).map(async (item) => {
+			const traits = await api.compare([hotspot.destinationId ?? ""], [item.city.id], 12).catch(() => []);
+			item.sharedTraits = [...new Set([...traits, ...item.sharedTraits])].slice(0, 4);
 		}),
 	);
 
-	const where = level === "country" ? `elsewhere in ${home.country ?? "the country"}` : "beyond the border";
 	return {
 		level,
 		items: top,
-		note: top.length === 0 ? `No twin cities found ${where}.` : `${top.length} cities ${where}, at least ${km(SAME_METRO_KM)} away.`,
+		note: `${top.length} ${top.length === 1 ? "city" : "cities"} ${where}${level === "country" ? `, at least ${km(MIN_COUNTRY_TWIN_KM)} away` : ""}.`,
 	};
 }

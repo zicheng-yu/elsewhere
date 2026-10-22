@@ -22,17 +22,28 @@ const REQUEST: TripRequest = {
 };
 
 describe("mock transport", () => {
-	it("rejects non-locality signals for locality output, like the real API", async () => {
+	it("rejects queries whose signals are all unknown, like the real API", async () => {
+		const api = testApi();
+		await expect(api.client.get("/v2/insights", { "filter.type": "urn:entity:destination", "signal.interests.entities": ["NOT-A-REAL-ID"] })).rejects.toBeInstanceOf(QlooError);
+	});
+
+	it("scores destinations against taste signals and never returns the signal itself", async () => {
 		const api = testApi();
 		const [film] = await api.searchTaste("Calm Film");
-		await expect(api.client.get("/v2/insights", { "filter.type": "urn:entity:locality", "signal.interests.entities": [film?.id ?? ""] })).rejects.toBeInstanceOf(QlooError);
+		const [testa] = await api.searchDestinations("Testa");
+		const forFilm = await api.destinations({ signalIds: [film?.id ?? ""], take: 10 });
+		expect(forFilm.length).toBeGreaterThan(0);
+		expect(forFilm.every((d) => d.kind === "destination" && d.affinity !== undefined)).toBe(true);
+		const similar = await api.destinations({ signalIds: [testa?.id ?? ""], take: 10 });
+		expect(similar.map((d) => d.id)).not.toContain(testa?.id);
 	});
 
 	it("applies location, popularity and exclusion filters", async () => {
 		const api = testApi();
 		const [testa] = await api.searchLocalities("Testa");
 		const [shrine] = await api.searchPlaces("Crowded Shrine");
-		const places = await api.places({ signalIds: [shrine?.id ?? ""], location: testa?.id, popularityMax: 0.9, excludeIds: [shrine?.id ?? ""] });
+		const area = { localityId: testa?.id, lat: testa?.lat ?? 0, lon: testa?.lon ?? 0, radiusKm: 10 };
+		const places = await api.places({ signalIds: [shrine?.id ?? ""], area, popularityMax: 0.9, excludeIds: [shrine?.id ?? ""] });
 		expect(places.length).toBeGreaterThan(0);
 		for (const place of places) {
 			expect(place.popularity ?? 1).toBeLessThanOrEqual(0.9);
@@ -52,15 +63,18 @@ describe("engine on the test world", () => {
 		expect(hotspot.crowdedSpots.map((s) => s.name)).toEqual(["Crowded Shrine", "Busy Temple"]);
 		expect(hotspot.tasteProfile.map((t) => t.name)).toEqual(["Calm Film"]);
 		expect(hotspot.vibeTags.map((t) => t.name)).toEqual(["Quiet"]);
-		expect(hotspot.trend?.length).toBeGreaterThanOrEqual(52);
-		expect(hotspot.trend?.every((p) => p.percentile >= 0 && p.percentile <= 1)).toBe(true);
+		expect(hotspot.destinationId).toBeDefined();
+		// The tiny test city has too few sights inside its boundary, so the search widens to a circle.
+		expect(hotspot.area.localityId).toBeUndefined();
+		expect(hotspot.area.radiusKm).toBeGreaterThan(10);
+		expect(hotspot.locality.countryCode).toBe("ZZ");
 		expect(evidence.every((e) => e.ok)).toBe(true);
 	});
 
 	it("resolves a destination written with its country or a typo", async () => {
 		const api = testApi();
-		expect((await resolveDestination(api, "Testa, Testland")).name).toBe("Testa");
-		expect((await resolveDestination(api, "Quiettn Testland")).name).toBe("Quietton");
+		expect((await resolveDestination(api, "Testa, Testland")).home.name).toBe("Testa");
+		expect((await resolveDestination(api, "Quiettn Testland")).home.name).toBe("Quietton");
 		await expect(resolveDestination(api, "Atlantis")).rejects.toBeInstanceOf(ResolveError);
 	});
 
@@ -104,8 +118,9 @@ describe("engine on the test world", () => {
 		expect(country.items.map((c) => c.city.name)).toContain("Quietton");
 		expect(country.items.every((c) => c.city.countryCode === "ZZ")).toBe(true);
 		expect(world.items.map((c) => c.city.name)).toEqual(["Farland"]);
-		const quietton = country.items.find((c) => c.city.name === "Quietton");
-		expect(quietton?.season.isBestMonth).toBe(true);
+		// Twins take pressure off: never busier than the original.
+		for (const item of [...country.items, ...world.items]) expect(item.city.popularity ?? 0).toBeLessThan(hotspot.locality.popularity ?? 1);
+		expect(country.items.every((c) => c.highlights.length > 0)).toBe(true);
 	});
 
 	it("plans the chosen alternative like a local", async () => {

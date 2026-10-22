@@ -147,14 +147,15 @@ await check("6. Day trips (POINT + radius, exclude the city)", async () => {
 	return [...towns.entries()].map(([town, n]) => `${town}×${n}`).join(", ");
 });
 
-await check("7. Similar localities (locality → locality)", async () => {
-	const data = await raw("07-similar-localities", "/v2/insights", { "filter.type": ENTITY_TYPE.locality, "signal.interests.entities": [cityId], take: 30 });
-	const localities = entitiesOf(data).map(toLocality).filter((l) => l !== undefined);
-	const twin = localities.find((l) => l.name.toLowerCase() === twinCity.toLowerCase());
+let homeDestinationId = "";
+await check("7. Similar destinations (destination → destination)", async () => {
+	const [home] = await api.searchDestinations(destination, 3);
+	if (!home) throw new Error("no destination entity");
+	homeDestinationId = home.id;
+	const similar = await api.destinations({ signalIds: [home.id], take: 30 });
+	const twin = similar.find((d) => d.name.toLowerCase() === twinCity.toLowerCase());
 	if (twin) twinCityId = twin.id;
-	const withPopularity = localities.filter((l) => l.popularity !== undefined).length;
-	const withMonths = localities.filter((l) => seasonInfo(l, 4).peakMonths.length > 0).length;
-	return `${localities.slice(0, 12).map((l) => `${l.name} [${l.placeType ?? "?"}]`).join(", ")} · popularity on ${withPopularity}/${localities.length} · month tags on ${withMonths}/${localities.length}`;
+	return similar.slice(0, 12).map((d) => `${d.name} [${d.countryCode ?? "?"}] ${d.popularity?.toFixed(2)}`).join(", ");
 });
 
 await check("8. filter.popularity.max on localities", async () => {
@@ -176,23 +177,18 @@ await check("9. Heatmap (city + taste signal), default and neighborhood boundary
 	return `${cells.length} geohash cells (precision ${cells[0]?.geohash.length ?? "?"}) · neighborhood boundary: ${neighborhoods.length} cells`;
 });
 
-await check("10. Trending for a locality", async () => {
-	const end = new Date();
-	const start = new Date(end.getTime() - 26 * 7 * 24 * 3600 * 1000);
-	const data = await raw("10-trending", "/v2/trending", {
-		"filter.type": ENTITY_TYPE.locality,
-		"signal.interests.entities": [cityId],
-		"filter.start_date": start.toISOString().slice(0, 10),
-		"filter.end_date": end.toISOString().slice(0, 10),
-	});
-	const points = (data as { results?: { trending?: unknown[] } }).results?.trending ?? [];
-	return `${points.length} weekly points`;
+await check("10. Locality month tags (search, then insights with filter.results.entities)", async () => {
+	const city = (await api.searchLocalities(destination, 3))[0];
+	if (!city || !homeDestinationId) throw new Error("no locality or destination");
+	const profile = await api.localityProfile(city.id, homeDestinationId);
+	const season = seasonInfo(profile, 4);
+	return `${profile?.tags.length ?? 0} tags · peak ${season.peakMonths} · best ${season.bestMonths} · worst ${season.worstMonths} · April events ${season.events.join("/")}`;
 });
 
-await check("11. Compare taste DNA", async () => {
-	if (!twinCityId) throw new Error(`${twinCity} was not among similar localities; pass --twin=<name>`);
-	const data = await raw("11-compare", "/v2/analysis/compare", { "a.signal.interests.entities": [cityId], "b.signal.interests.entities": [twinCityId], take: 10 });
-	return `response keys: ${Object.keys((data as { results?: object }).results ?? {}).join(", ") || "array"} · sample: ${JSON.stringify(data).slice(0, 240)}`;
+await check("11. Compare taste DNA (destinations)", async () => {
+	if (!twinCityId) throw new Error(`${twinCity} was not among similar destinations; pass --twin=<name>`);
+	const traits = await api.compare([homeDestinationId], [twinCityId], 12);
+	return traits.join(", ") || "(no traits)";
 });
 
 await check("12. Tag search (semantic)", async () => {
@@ -200,16 +196,11 @@ await check("12. Tag search (semantic)", async () => {
 	return tags.map((t) => `${t.name} [${t.id}]`).join(", ");
 });
 
-await check("13. urn:entity:destination availability", async () => {
-	const data = await raw("13-destination", "/v2/insights", { "filter.type": "urn:entity:destination", "signal.interests.entities": [cityId], take: 5 });
-	return `${entitiesOf(data).length} results`;
-});
-
 await check("14. Featured scenario destinations resolve", async () => {
 	const rows: string[] = [];
 	for (const scenario of SCENARIOS) {
-		const found = await api.searchLocalities(scenario.request.destination, 1);
-		rows.push(`${scenario.request.destination}→${found[0]?.name ?? "MISSING"}`);
+		const found = await api.searchDestinations(scenario.request.destination, 3);
+		rows.push(`${scenario.request.destination}→${found[0] ? `${found[0].name} [${found[0].country ?? "?"}]` : "MISSING"}`);
 	}
 	return rows.join(", ");
 });

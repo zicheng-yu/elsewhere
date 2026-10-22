@@ -2,14 +2,14 @@
 import { km, percentile } from "../../shared/format.ts";
 import type { Place, SpotTwin, ZoomResult } from "../../shared/types.ts";
 import { haversineKm } from "../geo.ts";
-import { FOOD_DRINK_TAGS, SIGHT_TAGS } from "../qloo/endpoints.ts";
+import { isSight, PLACE_TAG, twinCategories } from "../qloo/endpoints.ts";
 import { buildScore, crowdRelief, proximity } from "../scoring.ts";
 import { sharedTraits } from "../traits.ts";
 import { tasteAffinities, tasteSignals, type ZoomContext } from "./shared.ts";
 
-/** Sight genre tags the spot carries, used to keep twins in the same category. */
-function sightTagsOf(place: Place): string[] {
-	return place.tags.map((tag) => tag.id).filter((id) => SIGHT_TAGS.includes(id as (typeof SIGHT_TAGS)[number]));
+/** Twins must be noticeably less popular than the spot they replace. */
+function popularityCap(popularity: number | undefined): number {
+	return Math.max(0.5, Math.min(0.98, (popularity ?? 0.99) - 0.01));
 }
 
 export async function findSpotTwins(
@@ -22,25 +22,15 @@ export async function findSpotTwins(
 		return { level: "city", items: [], note: "No crowded spots were found to swap." };
 	}
 	const excludeIds = spots.map((spot) => spot.id);
+	const maxKm = hotspot.area.radiusKm + 15;
 
 	const discovered = await Promise.all(
 		spots.map(async (spot) => {
-			const cap = Math.min(0.95, Math.max(0.5, (spot.popularity ?? 0.99) - 0.05));
-			const base = {
-				signalIds: [spot.id],
-				location: hotspot.locality.id,
-				popularityMax: cap,
-				excludeIds,
-				excludeTagIds: FOOD_DRINK_TAGS,
-				take: 15,
-			};
-			const sameCategory = sightTagsOf(spot);
-			let candidates = await api.places(
-				{ ...base, tagIds: sameCategory.length > 0 ? sameCategory : SIGHT_TAGS },
-				`Quiet twins of ${spot.name}`,
-			);
-			if (candidates.length < 3) {
-				candidates = await api.places({ ...base, tagIds: SIGHT_TAGS }, `Quiet twins of ${spot.name} (any sight)`);
+			const query = { signalIds: [spot.id], area: hotspot.area, popularityMax: popularityCap(spot.popularity), excludeIds, take: 10 };
+			const near = (list: Place[]) => list.filter((p) => isSight(p) && haversineKm(p, hotspot.area) <= maxKm);
+			let candidates = near(await api.places({ ...query, tagIds: twinCategories(spot) }, `Quiet twins of ${spot.name}`));
+			if (candidates.length < 2) {
+				candidates = near(await api.places({ ...query, tagIds: [PLACE_TAG.attraction] }, `Quiet twins of ${spot.name} (any sight)`));
 			}
 			return { spot, candidates };
 		}),
@@ -55,7 +45,7 @@ export async function findSpotTwins(
 		),
 		// Where the traveler's taste concentrates in the city, drawn under the crowded spots and their twins.
 		signalIds.length + signalTagIds.length > 0
-			? api.heatmap({ location: hotspot.locality.id, signalIds, signalTagIds }).catch(() => undefined)
+			? api.heatmap({ area: hotspot.area, signalIds, signalTagIds }).catch(() => undefined)
 			: Promise.resolve(undefined),
 	]);
 

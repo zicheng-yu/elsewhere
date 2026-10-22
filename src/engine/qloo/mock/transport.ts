@@ -8,7 +8,7 @@
 import { centroid, geohashCenter, geohashEncode, geohashNeighbors, haversineKm, type LatLon } from "../../geo.ts";
 import { matchNormalized, normalizeName } from "../../text.ts";
 import { QlooError, type QlooTransport } from "../client.ts";
-import { FACETS, type Facet, type MonthNumber } from "./world-schema.ts";
+import { FACETS, type Facet } from "./world-schema.ts";
 import {
 	FACET_LABELS,
 	FACET_SYNONYMS,
@@ -119,7 +119,13 @@ function entityPoint(entity: IndexedEntity): LatLon | undefined {
 
 function localityKeyOf(entity: IndexedEntity): string | undefined {
 	if (entity.kind === "place") return entity.locality.key;
-	if (entity.kind === "locality") return entity.data.key;
+	if (entity.kind === "locality" || entity.kind === "destination") return entity.data.key;
+	return undefined;
+}
+
+function countryOf(entity: IndexedEntity): string | undefined {
+	if (entity.kind === "place") return entity.locality.countryCode;
+	if (entity.kind === "locality" || entity.kind === "destination") return entity.data.countryCode;
 	return undefined;
 }
 
@@ -155,8 +161,6 @@ export class MockTransport implements QlooTransport {
 				return this.#tags(params);
 			case "/v2/analysis/compare":
 				return this.#compare(params);
-			case "/v2/trending":
-				return this.#trending(params);
 			default:
 				throw new QlooError("not_found", 404, `No path matching request: ${path}`);
 		}
@@ -235,13 +239,14 @@ export class MockTransport implements QlooTransport {
 		const take = clamp(Math.round(numParam(params, "take") ?? 10), 1, 199);
 
 		const wanted = (entity: IndexedEntity): boolean => {
-			if (types.length === 0) return true;
+			if (types.length === 0) return entity.kind !== "destination";
 			if (entity.kind === "locality") return types.includes("urn:entity:locality");
+			if (entity.kind === "destination") return types.includes("urn:entity:destination");
 			if (entity.kind === "place") return types.includes("urn:entity:place");
 			return types.some((type) => TASTE_TYPES[type] === entity.data.kind);
 		};
 
-		const scored = [...this.#world.localities, ...this.#world.places, ...this.#world.tastes]
+		const scored = [...this.#world.localities, ...this.#world.destinations, ...this.#world.places, ...this.#world.tastes]
 			.filter(wanted)
 			.map((entity) => ({ entity, score: queryNorm ? matchNormalized(queryNorm, entity.normName) : 1 }))
 			.filter(({ score }) => score >= 0.3)
@@ -268,7 +273,7 @@ export class MockTransport implements QlooTransport {
 			return b.score - a.score || entityPopularity(b.entity) - entityPopularity(a.entity);
 		});
 
-		return { success: true, results: scored.slice(0, take).map(({ entity }) => this.#world.raw(entity)) };
+		return { success: true, results: scored.slice(0, take).map(({ entity }) => this.#world.raw(entity, undefined, { search: true })) };
 	}
 
 	#entities(params: URLSearchParams): unknown {
@@ -287,13 +292,16 @@ export class MockTransport implements QlooTransport {
 		const signal = this.#signal(params);
 		if (type === "urn:heatmap") return this.#heatmap(params, signal);
 
+		// Like the real API: unknown signal IDs make the query fail, and an entity is never returned for its own signal.
+		if (list(params, "signal.interests.entities").length > 0 && signal.entities.length === 0 && list(params, "signal.interests.tags").length === 0) {
+			throw badRequest("All of the provided signal.interests.entities were invalid. At least one valid signal or filter is required for entity insights.");
+		}
+		const signalIds = new Set(signal.entities.map((entity) => entity.id));
 		let candidates: IndexedEntity[];
 		if (type === "urn:entity:locality") {
-			if (signal.entities.some((entity) => entity.kind !== "locality")) {
-				throw badRequest("urn:entity:locality only supports signal.interests.entities that are localities");
-			}
-			const signalIds = new Set(signal.entities.map((entity) => entity.id));
 			candidates = this.#world.localities.filter((entity) => !signalIds.has(entity.id));
+		} else if (type === "urn:entity:destination") {
+			candidates = this.#world.destinations.filter((entity) => !signalIds.has(entity.id));
 		} else if (type === "urn:entity:place") {
 			candidates = this.#world.places;
 		} else if (TASTE_TYPES[type]) {
@@ -303,10 +311,6 @@ export class MockTransport implements QlooTransport {
 		}
 
 		const area = this.#area(params.get("filter.location"), numParam(params, "filter.location.radius"));
-		const excludeArea = this.#area(
-			params.get("filter.exclude.location"),
-			numParam(params, "filter.exclude.location.radius"),
-		);
 		const popularityMax = numParam(params, "filter.popularity.max");
 		const popularityMin = numParam(params, "filter.popularity.min");
 		const excludeIds = new Set(list(params, "filter.exclude.entities"));
@@ -326,7 +330,6 @@ export class MockTransport implements QlooTransport {
 			if (resultIds.length > 0 && !resultIds.includes(entity.id)) return false;
 			const point = entityPoint(entity);
 			if (area && (!point || !area.contains(point, localityKeyOf(entity)))) return false;
-			if (excludeArea && point && excludeArea.contains(point, localityKeyOf(entity))) return false;
 			if (tags.length > 0) {
 				const has = (tag: string) => entity.tagIds.includes(tag);
 				if (intersection ? !tags.every(has) : !tags.some(has)) return false;
@@ -336,31 +339,18 @@ export class MockTransport implements QlooTransport {
 		});
 
 		const signalKey = list(params, "signal.interests.entities").join("|") + list(params, "signal.interests.tags").join("|");
-		const signalCountries = signal.entities.flatMap((e) => (e.kind === "locality" ? [e.data.countryCode] : []));
+		const signalCountries = signal.entities.flatMap((e) => countryOf(e) ?? []);
 		const prior = (entity: IndexedEntity) =>
-			entity.kind === "locality" && signalCountries.length > 0
+			(entity.kind === "locality" || entity.kind === "destination") && signalCountries.length > 0
 				? Math.max(...signalCountries.map((code) => regionalPrior(code, entity.data.countryCode)))
 				: 0;
-		let scored = filtered.map((entity) => ({
+		const scored = filtered.map((entity) => ({
 			entity,
 			affinity: signal.hasSignal
 				? mockAffinity(signal.unit, entity.unit, `${signalKey}|${entity.id}`, entityPopularity(entity), prior(entity))
 				: round3(0.5 + 0.45 * entityPopularity(entity)),
 		}));
 		scored.sort((a, b) => b.affinity - a.affinity);
-
-		// diversify.by caps results per city before paging (properties.geocode.city / .metro).
-		const diversifyBy = params.get("diversify.by");
-		if (diversifyBy === "properties.geocode.city" || diversifyBy === "properties.geocode.metro") {
-			const cap = clamp(Math.round(numParam(params, "diversify.take") ?? 5), 1, 50);
-			const counts = new Map<string, number>();
-			scored = scored.filter(({ entity }) => {
-				const key = localityKeyOf(entity) ?? entity.id;
-				const n = counts.get(key) ?? 0;
-				counts.set(key, n + 1);
-				return n < cap;
-			});
-		}
 
 		const take = clamp(Math.round(numParam(params, "take") ?? 20), 1, 50);
 		const page = clamp(Math.round(numParam(params, "page") ?? 1), 1, 100);
@@ -475,44 +465,10 @@ export class MockTransport implements QlooTransport {
 			.map(({ facet, score }) => ({
 				tag_id: facetTagId(facet),
 				name: FACET_LABELS[facet],
-				type: "urn:tag:keyword:qloo",
+				type: "urn:tag",
+				subtype: "urn:tag:characteristic:qloo",
 				query: { score: round3(score) },
 			}));
 		return { success: true, results: { tags } };
-	}
-
-	#trending(params: URLSearchParams): unknown {
-		const id = list(params, "signal.interests.entities")[0];
-		const start = params.get("filter.start_date");
-		const end = params.get("filter.end_date");
-		if (!params.get("filter.type") || !id || !start || !end) {
-			throw badRequest("filter.type, signal.interests.entities, filter.start_date and filter.end_date are required");
-		}
-		const entity = this.#world.byId.get(id);
-		if (!entity) return { success: true, results: { trending: [] } };
-		const locality =
-			entity.kind === "locality" ? entity.data : entity.kind === "place" ? entity.locality : undefined;
-		const base = entity.data.popularity * 100;
-		const points: Record<string, unknown>[] = [];
-		const endDate = new Date(`${end}T00:00:00Z`);
-		for (let date = new Date(`${start}T00:00:00Z`); date <= endDate; date.setUTCDate(date.getUTCDate() + 7)) {
-			const month = (date.getUTCMonth() + 1) as MonthNumber;
-			const gap = 100 - base;
-			const factor = locality?.peakMonths.includes(month)
-				? 0.6
-				: locality?.offSeasonMonths.includes(month)
-					? 1.5
-					: 1;
-			const iso = date.toISOString().slice(0, 10);
-			const percentile = clamp(100 - gap * factor * (0.95 + 0.1 * hashUnit(`${id}|${iso}`)), 0, 99.99);
-			points.push({
-				date: iso,
-				population_percentile: Math.round(percentile * 100) / 100,
-				population_rank: Math.max(1, Math.round((100 - percentile) * 40)),
-				velocity_fold_change: round3(1 / factor),
-			});
-		}
-		points.reverse();
-		return { success: true, results: { trending: points } };
 	}
 }

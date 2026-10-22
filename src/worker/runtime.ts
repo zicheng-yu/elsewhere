@@ -1,32 +1,60 @@
+import { DEFAULT_FALLBACK_MODELS, DEFAULT_MODEL, type Budget, type LlmConfig } from "../engine/agent/llm.ts";
 import { QlooApi } from "../engine/qloo/endpoints.ts";
 import { KvCache } from "../engine/qloo/cache.ts";
 import { LiveTransport, QlooClient } from "../engine/qloo/client.ts";
 import { demoWorld } from "../engine/qloo/mock/demo-world.ts";
 import { MockTransport } from "../engine/qloo/mock/transport.ts";
 import type { Evidence, RunModes } from "../shared/types.ts";
+import { d1Budget } from "./store.ts";
 
 export interface ResolvedModes extends RunModes {
 	qlooKey?: string;
-	anthropicKey?: string;
+	llmKey?: string;
 }
 
 /** Live data and the LLM agent switch on only when both the mode and the secret are present. */
 export function resolveModes(env: Env): ResolvedModes {
 	const qlooKey = env.QLOO_API_KEY?.trim() || undefined;
-	const anthropicKey = env.ANTHROPIC_API_KEY?.trim() || undefined;
+	const llmKey = env.OPENROUTER_API_KEY?.trim() || undefined;
+	const agent = env.AGENT_MODE === "llm" && llmKey ? "llm" : "scripted";
 	return {
 		qloo: env.QLOO_MODE === "live" && qlooKey ? "live" : "mock",
-		agent: env.AGENT_MODE === "claude" && anthropicKey ? "claude" : "scripted",
+		agent,
+		model: agent === "llm" ? env.LLM_MODEL?.trim() || DEFAULT_MODEL : undefined,
 		qlooKey,
-		anthropicKey,
+		llmKey,
 	};
 }
 
-export function createApi(env: Env, modes: ResolvedModes, onEvidence?: (evidence: Evidence) => void): QlooApi {
+function numberOr(value: string | undefined, fallback: number): number {
+	const n = Number(value);
+	return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+/** The agent's model settings and spending guard, or nothing when the agent is off. */
+export function llmFor(env: Env, modes: ResolvedModes, appUrl?: string): { config: LlmConfig; budget: Budget } | undefined {
+	if (modes.agent !== "llm" || !modes.llmKey) return undefined;
+	const fallbacks = env.LLM_FALLBACK_MODELS?.split(",").map((m) => m.trim()).filter(Boolean);
+	return {
+		config: {
+			apiKey: modes.llmKey,
+			model: modes.model ?? DEFAULT_MODEL,
+			fallbackModels: fallbacks ?? DEFAULT_FALLBACK_MODELS,
+			maxCalls: Math.max(2, Math.min(8, numberOr(env.LLM_MAX_CALLS, 5))),
+			maxTokens: 1200,
+			reasoningEffort: "none",
+			appUrl,
+		},
+		budget: d1Budget(env.DB, { dailyUsd: numberOr(env.LLM_DAILY_USD, 0.5), totalUsd: numberOr(env.LLM_TOTAL_USD, 5) }),
+	};
+}
+
+export function createApi(env: Env, modes: ResolvedModes, onEvidence?: (evidence: Evidence) => void, options: { cache?: boolean } = {}): QlooApi {
 	if (modes.qloo === "live" && modes.qlooKey) {
 		const client = new QlooClient({
 			transport: new LiveTransport({ apiKey: modes.qlooKey }),
-			cache: new KvCache(env.QLOO_CACHE),
+			// Autocomplete skips KV: one write per keystroke would eat the free plan's daily write quota.
+			cache: options.cache === false ? undefined : new KvCache(env.QLOO_CACHE),
 			concurrency: 5,
 			onEvidence,
 		});

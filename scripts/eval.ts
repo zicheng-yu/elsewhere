@@ -9,6 +9,7 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { MemoryCache } from "../src/engine/qloo/cache.ts";
+import { FileCache } from "./lib/file-cache.ts";
 import { LiveTransport, QlooClient, type QlooTransport } from "../src/engine/qloo/client.ts";
 import { QlooApi } from "../src/engine/qloo/endpoints.ts";
 import { demoWorld } from "../src/engine/qloo/mock/demo-world.ts";
@@ -30,7 +31,8 @@ if (live && !process.env.QLOO_API_KEY) {
 }
 
 const transport: QlooTransport = live ? new LiveTransport({ apiKey: process.env.QLOO_API_KEY ?? "" }) : new MockTransport(demoWorld());
-const cache = new MemoryCache(5000);
+// Live runs reuse responses across runs (git-ignored .qloo-cache/http/); synthetic runs stay in memory.
+const cache = live ? new FileCache() : new MemoryCache(5000);
 let calls = 0;
 const api = new QlooApi(new QlooClient({ transport, cache, onEvidence: (e) => (calls += e.cached ? 0 : 1) }));
 

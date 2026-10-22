@@ -2,16 +2,16 @@
 import { joinNames, km, percentile } from "../../shared/format.ts";
 import type { Place, TownTwin, ZoomResult } from "../../shared/types.ts";
 import { centroid, haversineKm } from "../geo.ts";
-import { FOOD_DRINK_TAGS, SIGHT_TAGS, wktPoint } from "../qloo/endpoints.ts";
+import { isSight, twinCategories } from "../qloo/endpoints.ts";
 import { buildScore, crowdRelief, mean, proximity } from "../scoring.ts";
 import { normalizeName, slugify } from "../text.ts";
 import { sharedTraits } from "../traits.ts";
 import { tasteAffinities, tasteSignals, type ZoomContext } from "./shared.ts";
 
 /** How far a day trip may go. Small communities inside it belong to this level, not to the twin-city ones. */
-export const DAY_TRIP_RADIUS_KM = 150;
+export const DAY_TRIP_RADIUS_KM = 120;
 /** Anything closer is the same urban area, not a day out. */
-const MIN_DAY_TRIP_KM = 12;
+const MIN_DAY_TRIP_KM = 15;
 
 export async function findDayTrips(
 	ctx: ZoomContext,
@@ -20,6 +20,7 @@ export async function findDayTrips(
 	const { api, hotspot } = ctx;
 	const radiusKm = options.radiusKm ?? DAY_TRIP_RADIUS_KM;
 	const home = hotspot.locality;
+	const center = hotspot.area;
 	const spots = hotspot.crowdedSpots;
 	const taste = tasteSignals(hotspot);
 	const useSpots = spots.length > 0;
@@ -28,12 +29,10 @@ export async function findDayTrips(
 		{
 			signalIds: useSpots ? spots.map((spot) => spot.id) : taste.signalIds,
 			signalTagIds: useSpots ? undefined : taste.signalTagIds,
-			location: wktPoint(home.lat, home.lon),
-			radiusM: radiusKm * 1000,
-			excludeLocation: home.id,
-			popularityMax: 0.975,
-			tagIds: SIGHT_TAGS,
-			excludeTagIds: FOOD_DRINK_TAGS,
+			area: { lat: center.lat, lon: center.lon, radiusKm },
+			tagIds: [...new Set(spots.flatMap(twinCategories))],
+			popularityMax: 0.98,
+			excludeIds: spots.map((spot) => spot.id),
 			take: 50,
 		},
 		`Find towns within ${radiusKm} km that share ${home.name}'s feel`,
@@ -44,13 +43,16 @@ export async function findDayTrips(
 	const crowdedTowns = new Set(spots.flatMap((spot) => (spot.city ? [normalizeName(spot.city)] : [])));
 	const towns = new Map<string, Place[]>();
 	for (const place of candidates) {
-		const town = place.city ?? place.neighborhood;
-		if (!town || normalizeName(town) === homeName || crowdedTowns.has(normalizeName(town))) continue;
-		if (haversineKm(place, home) < MIN_DAY_TRIP_KM) continue;
+		// "Sintra (Santa Maria e São Miguel, ...)" → "Sintra": geocoders append parishes.
+		const town = (place.city ?? place.neighborhood)?.replace(/\s*\(.*\)\s*$/, "").trim();
+		if (!town || !isSight(place)) continue;
+		const key = normalizeName(town);
+		if (key === homeName || crowdedTowns.has(key)) continue;
+		if (haversineKm(place, center) < MIN_DAY_TRIP_KM) continue;
 		towns.set(town, [...(towns.get(town) ?? []), place]);
 	}
 
-	const tasteByPlace = await tasteAffinities(api, hotspot, candidates.map((c) => c.id));
+	const tasteByPlace = await tasteAffinities(api, hotspot, [...towns.values()].flat().map((c) => c.id));
 	const spotPopularity = mean(spots.map((spot) => spot.popularity ?? Number.NaN)) ?? home.popularity;
 	const spotNames = joinNames(spots.map((spot) => spot.name).slice(0, 3)) || home.name;
 	const spotTags = spots.flatMap((spot) => spot.tags);
@@ -58,8 +60,8 @@ export async function findDayTrips(
 	const items: TownTwin[] = [...towns.entries()].map(([name, places]) => {
 		places.sort((a, b) => (b.affinity ?? 0) - (a.affinity ?? 0));
 		const top = places.slice(0, 3);
-		const center = centroid(places);
-		const distanceKm = haversineKm(center, home);
+		const townCenter = centroid(places);
+		const distanceKm = haversineKm(townCenter, center);
 		const townPopularity = mean(top.map((p) => p.popularity ?? Number.NaN));
 		const score = buildScore("region", {
 			soul: {
@@ -78,7 +80,7 @@ export async function findDayTrips(
 		});
 		return {
 			id: `town:${slugify(name)}`,
-			town: { name, lat: center.lat, lon: center.lon, country: places[0]?.country },
+			town: { name, lat: townCenter.lat, lon: townCenter.lon, country: places[0]?.country },
 			places: places.slice(0, 4),
 			score,
 			distanceKm,

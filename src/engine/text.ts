@@ -12,7 +12,12 @@ export function normalizeName(text: string): string {
 		.trim();
 }
 
-const STOP_WORDS = new Set(["the", "of", "de", "la", "le", "del", "di", "a", "and", "st"]);
+const STOP_WORDS = new Set([
+	"the", "of", "de", "la", "le", "del", "di", "a", "and", "st",
+	// Category words travelers translate freely ("Basilica" vs "Basílica de...", "Temple" vs "-ji").
+	"basilica", "basilique", "cathedral", "church", "temple", "shrine", "museum", "palace", "castle", "park", "garden", "gardens",
+	"square", "bridge", "tower", "market", "grove", "forest", "beach", "village", "old", "town", "monastery",
+]);
 
 /** Fuzzy name match in [0, 1]. */
 export function matchScore(query: string, name: string): number {

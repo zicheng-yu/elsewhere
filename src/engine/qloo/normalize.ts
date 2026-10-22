@@ -6,7 +6,7 @@
  * is read from several candidate paths. Verbose fields such as `akas` are
  * dropped here so they never reach the LLM.
  */
-import type { HeatCell, Locality, Place, TagRef, TasteEntity, TasteKind, TrendPoint } from "../../shared/types.ts";
+import type { HeatCell, Locality, Place, TagRef, TasteEntity, TasteKind } from "../../shared/types.ts";
 
 type Obj = Record<string, unknown>;
 
@@ -118,12 +118,14 @@ export function toPlace(raw: unknown): Place | undefined {
 	const coords = coordinates(raw);
 	if (!id || !name || !coords) return undefined;
 	const tags = toTags(first(raw, "tags", "properties.tags"));
+	const genre = str(first(raw, "properties.primary_genre.name"));
 	return {
 		id,
 		name,
 		...coords,
-		city: str(first(raw, "city", "properties.geocode.city", "properties.geocode.name", "geocode.name")),
+		city: cityName(str(first(raw, "city", "properties.geocode.city", "properties.geocode.name", "geocode.name"))),
 		neighborhood: str(first(raw, "neighborhood", "properties.neighborhood", "properties.geocode.neighborhood")),
+		region: str(first(raw, "admin1_region", "properties.geocode.admin1_region")),
 		country: str(first(raw, "country", "properties.geocode.country", "properties.country")),
 		countryCode: str(first(raw, "country_code", "properties.geocode.country_code")),
 		address: str(first(raw, "address", "properties.address", "disambiguation")),
@@ -135,27 +137,67 @@ export function toPlace(raw: unknown): Place | undefined {
 		description: str(
 			first(raw, "short_description", "properties.short_description", "description", "properties.description"),
 		),
-		categories: placeCategories(tags),
+		genre,
+		categories: [...new Set([...(genre ? [genre] : []), ...placeCategories(tags)])].slice(0, 3),
 		tags,
 	};
+}
+
+const LATIN = /^[\p{Script=Latin}\p{N}\p{P}\p{Zs}]+$/u;
+
+/** Geocoders sometimes name a city after its prefecture ("Osaka Prefecture"); keep the city part. */
+function cityName(name: string | undefined): string | undefined {
+	return name?.replace(/\s+(Prefecture|Province|Metropolis)$/i, "").trim() || undefined;
+}
+
+/**
+ * A readable name for a locality. Qloo names administrative localities in the
+ * local script ("京都市"), so prefer an English alias, then any Latin-script alias.
+ */
+export function displayName(raw: Obj): string | undefined {
+	const name = str(raw.name);
+	const akas = Array.isArray(get(raw, "properties.akas")) ? (get(raw, "properties.akas") as unknown[]) : [];
+	const alias = (test: (language: string, value: string) => boolean) =>
+		akas.map((aka) => [str(get(aka, "language")) ?? "", str(get(aka, "value")) ?? ""] as const).find(([language, value]) => value && test(language, value))?.[1];
+	if (name && LATIN.test(name)) return name;
+	return alias((language) => /^en(_|$)/.test(language)) ?? alias((_, value) => LATIN.test(value)) ?? name;
+}
+
+function ancestor(raw: Obj, place: string): Obj | undefined {
+	const ancestors = get(raw, "properties.ancestors");
+	return Array.isArray(ancestors) ? (ancestors.find((a) => isObj(a) && a.place === place) as Obj | undefined) : undefined;
+}
+
+/** "Nagoya-shi" → "Nagoya", "Busan 釜山" → "Busan": destination names sometimes carry a suffix or a local-script echo. */
+function cleanDestinationName(name: string): string {
+	const latin = name.split(/\s+/).filter((part) => LATIN.test(part)).join(" ");
+	return (latin || name).replace(/-(shi|si|gun|ku)$/i, "").trim();
 }
 
 export function toLocality(raw: unknown): Locality | undefined {
 	if (!isObj(raw)) return undefined;
 	const id = entityId(raw);
-	const name = str(raw.name);
+	const isDestination = /destination/.test(str(first(raw, "subtype", "types.0", "type")) ?? "");
+	const rawName = displayName(raw);
+	const name = rawName && isDestination ? cleanDestinationName(rawName) : rawName;
 	const coords = coordinates(raw);
 	if (!id || !name || !coords) return undefined;
 	const tags = toTags(first(raw, "tags", "properties.tags"));
 	const disambiguation = str(first(raw, "disambiguation", "properties.disambiguation"));
 	const genre = tags.find((tag) => tag.type.startsWith("urn:tag:genre:locality"));
+	const kind = isDestination ? "destination" : "locality";
 	return {
 		id,
+		kind,
 		name,
 		...coords,
-		country: str(first(raw, "country", "properties.geocode.country")) ?? lastSegment(disambiguation),
-		countryCode: str(first(raw, "country_code", "properties.geocode.country_code")),
-		disambiguation,
+		country:
+			str(first(raw, "country", "properties.country", "properties.geocode.country")) ??
+			str(ancestor(raw, "country")?.name) ??
+			(kind === "locality" ? lastSegment(disambiguation) : undefined),
+		countryCode: str(first(raw, "country_code", "properties.geocode.country_code"))?.toUpperCase(),
+		disambiguation: disambiguation && disambiguation !== name ? disambiguation : undefined,
+		region: str(first(raw, "admin1_region", "properties.geocode.admin1_region")) ?? str(ancestor(raw, "state")?.name),
 		population: num(first(raw, "population", "properties.population")),
 		popularity: num(first(raw, "popularity", "properties.popularity")),
 		affinity: num(first(raw, "query.affinity", "affinity")),
@@ -224,30 +266,32 @@ export function tagsOf(response: unknown): TagRef[] {
 	return toTags(Array.isArray(list) ? list : []);
 }
 
-/** Weekly trend points, oldest first, with percentiles scaled to [0, 1] whichever scale the response uses. */
-export function trendOf(response: unknown): TrendPoint[] {
-	const list = first(response, "results.trending", "results");
-	if (!Array.isArray(list)) return [];
-	const points: TrendPoint[] = [];
-	for (const item of list) {
-		const date = str(get(item, "date"));
-		const percentile = num(first(item, "population_percentile", "percentile"));
-		if (date && percentile !== undefined) points.push({ date: date.slice(0, 10), percentile });
-	}
-	const scale = points.some((p) => p.percentile > 1) ? 100 : 1;
-	return points
-		.map((p) => ({ date: p.date, percentile: Math.min(1, Math.max(0, p.percentile / scale)) }))
-		.sort((a, b) => a.date.localeCompare(b.date));
-}
+/** Trait families worth showing as shared character; transport, demographics and climate are noise. */
+const TRAIT_SUBTYPES = /(characteristic|culture|scenery|activity|photogenic_spot|popular_food_item|culinary_experience|unusual_attraction|flora|ideal_traveler|genre:destination)/;
+const NOISE_SUBTYPES = /(transport|demographic|language|travel_advisory|_month|event_type|shopping|entertainment_option)/;
 
-/** Shared traits from an analysis/compare response, whatever list it returns. */
+/** Shared traits from an analysis/compare response, strongest first. */
 export function compareTraitsOf(response: unknown): string[] {
 	const list = first(response, "results.tags", "results.entities", "results");
 	if (!Array.isArray(list)) return [];
-	const names: string[] = [];
+	const scored: { name: string; score: number }[] = [];
 	for (const item of list) {
-		const name = str(get(item, "name")) ?? (str(get(item, "tag_id")) ? humanizeTag(String(get(item, "tag_id"))) : undefined);
-		if (name) names.push(name);
+		const subtype = str(first(item, "subtype", "type")) ?? "";
+		const tagId = str(get(item, "tag_id")) ?? "";
+		const family = `${subtype} ${tagId}`;
+		if (NOISE_SUBTYPES.test(family) || (subtype && !TRAIT_SUBTYPES.test(family))) continue;
+		const name = str(get(item, "name")) ?? (tagId.startsWith("urn:") ? humanizeTag(tagId) : undefined);
+		if (name) scored.push({ name, score: num(first(item, "query.score", "score")) ?? 0 });
 	}
-	return [...new Set(names)];
+	return [...new Set(scored.sort((a, b) => b.score - a.score).map((t) => t.name))];
+}
+
+/** Signal IDs Qloo reported as unknown (for example search-only stub entities). */
+export function invalidSignalsOf(response: unknown): string[] {
+	const warnings = get(response, "warnings");
+	if (!Array.isArray(warnings)) return [];
+	return warnings.flatMap((warning) => {
+		const ids = isObj(warning) && warning.type === "not_found" ? warning["signal.interests.entities"] : undefined;
+		return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+	});
 }

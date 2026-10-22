@@ -41,13 +41,15 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the request flow, the full 
 
 The agent works through three tools: `resolve_trip`, `find_dupes` and `plan_local`.
 
-- **Claude agent** (`claude-opus-5-5`, Anthropic SDK tool runner with streaming):
-  - decides which zoom levels fit your constraints;
+- **LLM agent** (a streaming tool-calling loop over OpenRouter; `anthropic/claude-haiku-5.5` by default, with `openai/gpt-6-luna` as the fallback):
+  - decides which zoom levels fit your constraints and runs them in parallel;
   - may propose extra candidate cities, which Qloo then scores like any other candidate;
   - writes the narrative and handles follow-ups such as "even quieter, and add a jazz bar".
 - **Scripted planner:** without an LLM key, a deterministic planner calls the same tools in a fixed order with template narration.
 
 Result cards always come from tool output, never from model text. The model cannot invent a place.
+
+A journey costs about $0.002 in model usage. Every model call is checked against a spending ledger in D1 first (a daily and an all-time cap, `LLM_DAILY_USD` and `LLM_TOTAL_USD`); past either cap the scripted planner answers instead.
 
 ## Run it locally
 
@@ -55,8 +57,9 @@ Requires Node.js 22.18 or later.
 
 ```sh
 npm install
-npm run dev          # Vite + the Workers runtime (Cloudflare Vite plugin)
-npm test             # engine tests (synthetic transport)
+npm run dev          # Vite + the Workers runtime, synthetic data, scripted planner
+npm run dev:live     # the same against live Qloo data and the LLM agent (needs .dev.vars.live)
+npm test             # engine and agent-loop tests (synthetic transport, stubbed model)
 npm run typecheck
 npm run eval         # scenarios × personas against the synthetic world
 ```
@@ -64,9 +67,13 @@ npm run eval         # scenarios × personas against the synthetic world
 **No keys needed.** By default the app uses a **synthetic demo world** (`QLOO_MODE=mock`) and the scripted planner (`AGENT_MODE=scripted`). The synthetic world uses real place names and approximate coordinates. Every popularity value, rating and taste vector is invented, and nothing in the repository comes from Qloo.
 
 **Live data and the LLM agent:**
-1. Copy `.dev.vars.example` to `.dev.vars` and add `QLOO_API_KEY` and `ANTHROPIC_API_KEY`.
-2. Set `QLOO_MODE: "live"` and `AGENT_MODE: "claude"` in `cloudflare.config.ts`.
-3. On key day, run `QLOO_API_KEY=... npm run validate:qloo` to check the live API. It writes a data report to the git-ignored `.qloo-cache/`.
+1. Copy `.dev.vars.example` to `.dev.vars.live` and add `QLOO_API_KEY` and `OPENROUTER_API_KEY`.
+2. Run `npm run dev:live` (`cf dev --mode live`). The `live` mode switches `QLOO_MODE` to `live` and `AGENT_MODE` to `llm`; every other mode, including a plain deploy, stays on synthetic data and the scripted planner.
+3. Developer tools, all caching Qloo responses in the git-ignored `.qloo-cache/`:
+   - `node --env-file=.dev.vars.live scripts/run-journey.ts kyoto-april --plan=city` runs a journey end to end and prints every level;
+   - `node --env-file=.dev.vars.live scripts/qloo.ts /v2/insights filter.type=... take=10` summarizes any query;
+   - `node scripts/cpu-bench.ts kyoto-april` measures the engine's CPU time on cached responses;
+   - `npm run validate:qloo` checks the endpoints Elsewhere relies on.
 
 ## Deploy
 
@@ -74,13 +81,13 @@ npm run eval         # scenarios × personas against the synthetic world
 npx cf deploy        # Cloudflare Workers via the cf CLI
 ```
 
-Upload secrets with `cf deploy --secrets-file <file>`, or with `npx wrangler secret put QLOO_API_KEY --name elsewhere`.
+This deploys the synthetic-data version. Going live means deploying in the `live` mode with the secrets attached: `npx cf deploy --mode live --secrets-file .dev.vars.live`. Set a credit limit on the OpenRouter key as an outer backstop to the app's own caps.
 
 ## Stack
 
 - Cloudflare Workers, with static assets, KV, D1 and Rate Limiting, built and deployed with the `cf` CLI.
 - React 19, Vite 8 and Tailwind 4 on the front end; Hono and Zod on the API.
-- Qloo Insights API; Anthropic TypeScript SDK; MapLibre GL with OpenFreeMap tiles.
+- Qloo Insights API; OpenRouter (OpenAI-compatible chat completions over plain `fetch`); MapLibre GL with OpenFreeMap tiles.
 
 ## Data and attribution
 
