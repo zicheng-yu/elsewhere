@@ -2,6 +2,8 @@
 
 The app is live at https://elsewhere.zichengyu.com with live Qloo data and the LLM agent. Every number below comes from live runs.
 
+![Elsewhere finds quiet twins for Kyoto's crowded must-sees](screenshots/journey.jpg)
+
 ## Tagline
 
 Same soul, fewer crowds: an agent that finds your taste-matched alternative to an overtouristed place, then guides you there like a local.
@@ -96,6 +98,10 @@ Take Qloo away and Elsewhere stops working, and we built the proof instead of as
 ## Built with
 
 Qloo Insights API · Claude Haiku 5.5 via OpenRouter · Cloudflare Workers, D1 · Hono · React · Vite · Tailwind CSS · MapLibre GL · OpenFreeMap · Zod · Vitest
+
+## Screenshots
+
+All taken from the live app on live Qloo data: `docs/screenshots/` holds the landing page, a Kyoto journey, each zoom level, a plan, the evidence drawer, the comparison with the same model without Qloo, and the mobile dark theme.
 
 ## Testing instructions
 

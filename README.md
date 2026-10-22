@@ -6,6 +6,8 @@ Built for the [Qloo Agentic Hackathon](https://qloo.devpost.com/), on [Qloo](htt
 
 **Live demo:** https://elsewhere.zichengyu.com
 
+![Elsewhere finds quiet twins for Kyoto's crowded must-sees](docs/screenshots/journey.jpg)
+
 ## Why
 
 Overtourism is mostly a concentration problem: visitors bunch into a few places at the same times. Japan's Tourism Agency frames it this way, and Kyoto now promotes "decentralized tourism". The usual alternatives lists are generic, and they are written by the same sources that made the hotspots famous.
@@ -49,7 +51,16 @@ The agent works through three tools: `resolve_trip`, `find_dupes` and `plan_loca
 
 Result cards always come from tool output, never from model text. The model cannot invent a place.
 
-A journey costs about $0.002 in model usage. Every model call is checked against a spending ledger in D1 first (a daily and an all-time cap, `LLM_DAILY_USD` and `LLM_TOTAL_USD`); past either cap the scripted planner answers instead.
+A journey costs about $0.002 in model usage. Every model call is checked against a spending ledger in D1 first: a daily and an all-time cap (`LLM_DAILY_USD` and `LLM_TOTAL_USD`), and `LLM_TURNS_PER_VISITOR` agent turns a day for one visitor. Past any of them the scripted planner answers instead, and the agent trace says which cap it was.
+
+## What it looks like
+
+| | |
+| --- | --- |
+| ![The landing page: featured hotspots and a Fushimi Inari twin](docs/screenshots/home.jpg) | ![A journey: quieter twins, the Dupe Score and the map](docs/screenshots/journey.jpg) |
+| ![A day trip level](docs/screenshots/day-trip.jpg) | ![A twin city in the same country](docs/screenshots/same-country.jpg) |
+| ![A twin beyond the border](docs/screenshots/beyond-borders.jpg) | ![A plan: stay area, day by day, local customs](docs/screenshots/plan.jpg) |
+| ![The evidence drawer: every Qloo request in the run](docs/screenshots/evidence.jpg) | ![The same model without Qloo](docs/screenshots/llm-comparison.jpg) |
 
 ## Run it locally
 

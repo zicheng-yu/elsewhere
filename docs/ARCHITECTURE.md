@@ -75,6 +75,7 @@ Popularity is Qloo's cultural-attention percentile, not a visitor count, so the 
 | `AGENT_MODE` | `scripted` / `llm` | `llm` runs the language-model agent when `OPENROUTER_API_KEY` is set. `scripted` runs the same tools in a fixed order with template narration. |
 | `LLM_MODEL`, `LLM_FALLBACK_MODELS` | OpenRouter model IDs | The agent's model and the fallbacks OpenRouter tries when its providers fail. |
 | `LLM_DAILY_USD`, `LLM_TOTAL_USD` | dollars | Spending caps, checked against a ledger in D1 before every model call. Past either cap the scripted planner answers, and the agent trace says why. |
+| `LLM_TURNS_PER_VISITOR` | number | Agent turns one visitor may start per UTC day (the visitor is a hashed client address, counted in D1). One turn costs about $0.002, so this bounds a single visitor to about $0.08 a day whatever the shared key allows. |
 | `LLM_MAX_CALLS` | number | Model calls per agent turn; each tool round trip is one call. |
 
 `cf dev --mode live` (`npm run dev:live`) sets `QLOO_MODE=live` and `AGENT_MODE=llm` and reads the keys from `.dev.vars.live`. Every other mode, including a plain deploy, runs on synthetic data with the scripted planner, so the app runs end to end without any keys.

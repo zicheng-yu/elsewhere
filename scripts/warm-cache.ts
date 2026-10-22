@@ -3,13 +3,16 @@
  * each zoom level, so the Qloo responses a visitor is most likely to need are
  * already in the cache (and each run is recorded as a replayable journey).
  *
- *   node scripts/warm-cache.ts [--base=https://elsewhere.zichengyu.com] [--scripted] [--scenario=kyoto-april] [--no-plans]
+ *   node scripts/warm-cache.ts [--base=https://elsewhere.zichengyu.com] [--scripted] [--scenario=kyoto-april] [--no-plans] [--personas]
  *
  * --scripted runs the deterministic planner (no model calls): the agent asks
  * Qloo for the same things, so it warms the cache for free.
+ *
+ * --personas runs each featured journey once per taste profile as well, so the
+ * visitors who follow the testing instructions and swap the profile hit warm data.
  */
 import type { AgentEvent } from "../src/shared/events.ts";
-import { SCENARIOS } from "../src/shared/scenarios.ts";
+import { PERSONAS, SCENARIOS } from "../src/shared/scenarios.ts";
 import type { ZoomResult } from "../src/shared/types.ts";
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
@@ -17,6 +20,7 @@ const base = arg("base") ?? "https://elsewhere.zichengyu.com";
 const query = process.argv.includes("--scripted") ? "?planner=scripted" : "";
 const scenarioId = arg("scenario");
 const plans = !process.argv.includes("--no-plans");
+const personas = process.argv.includes("--personas");
 /** The Worker allows 8 runs a minute per IP. */
 const PAUSE_MS = 8000;
 
@@ -54,6 +58,15 @@ function summary(events: AgentEvent[], ms: number, status: number): string {
 const pause = () => new Promise((resolve) => setTimeout(resolve, PAUSE_MS));
 
 for (const scenario of SCENARIOS.filter((s) => !scenarioId || s.id === scenarioId)) {
+	if (personas) {
+		for (const persona of PERSONAS) {
+			const request = { ...scenario.request, favorites: persona.favorites, vibes: persona.vibes };
+			const warming = await run("/api/journeys", request);
+			console.log(`${scenario.id} · ${persona.label}: ${summary(warming.events, warming.ms, warming.status)}`);
+			await pause();
+		}
+		continue;
+	}
 	const journey = await run("/api/journeys", scenario.request);
 	const journeyId = journey.events.find((e) => e.type === "run.start")?.journeyId;
 	console.log(`${scenario.id}: ${summary(journey.events, journey.ms, journey.status)}${journeyId ? ` · ${base}/j/${journeyId}` : ""}`);
