@@ -289,7 +289,7 @@ export default function MapView({
 	}, [dark, heat, points, links, route, stayArea]);
 
 	return (
-		<div className="map-frame overflow-hidden rounded-2xl border border-line">
+		<div className="map-frame overflow-hidden rounded-[1.375rem] border border-line">
 			<div ref={container} style={{ height }} role="img" aria-label={ariaLabel} />
 		</div>
 	);

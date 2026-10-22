@@ -1,21 +1,27 @@
 @import "tailwindcss";
 
 @theme {
-	--font-serif: "Fraunces", Georgia, serif;
+	--font-serif: "Instrument Serif", Georgia, serif;
 	--font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 
 	/* Surfaces and ink */
-	--color-paper: #faf7f2;
-	--color-card: #fffdf8;
-	--color-ink: #1f1b16;
-	--color-ink-2: #5b534a;
-	--color-muted: #6f665c;
-	--color-line: #e7e0d6;
-	--color-wash: #f2ece2;
+	--color-paper: #ffffff;
+	--color-card: #ffffff;
+	--color-ink: #18181b;
+	--color-ink-2: #52525b;
+	--color-muted: #66666e;
+	--color-line: #e8e6e1;
+	--color-wash: #f5f4f1;
+	/* Behind photos while they load */
+	--color-frame: #f0eee9;
 
 	/* Brand accent for controls */
 	--color-accent: #b4532a;
 	--color-accent-ink: #ffffff;
+
+	/* Dupe Score meters: quiet ink on a light track */
+	--color-meter: #3f3f46;
+	--color-meter-track: #ecebe7;
 
 	/* Data roles (validated: blue sequential, orange emphasis) */
 	--color-viz-fill: #2a78d6;
@@ -37,15 +43,18 @@
 	@media (prefers-color-scheme: dark) {
 		:root:where(:not([data-theme="light"])) {
 			color-scheme: dark;
-			--color-paper: #16130f;
-			--color-card: #1f1b16;
-			--color-ink: #f2ede6;
-			--color-ink-2: #c9c0b4;
-			--color-muted: #8f877c;
-			--color-line: #2e2822;
-			--color-wash: #27221c;
+			--color-paper: #121214;
+			--color-card: #18181b;
+			--color-ink: #f4f4f5;
+			--color-ink-2: #c4c4cc;
+			--color-muted: #8e8e98;
+			--color-line: #2c2c31;
+			--color-wash: #222226;
+			--color-frame: #222226;
 			--color-accent: #e07a4f;
-			--color-accent-ink: #16130f;
+			--color-accent-ink: #121214;
+			--color-meter: #d4d4d8;
+			--color-meter-track: #2c2c31;
 			--color-viz-fill: #3987e5;
 			--color-viz-track: #104281;
 			--color-viz-accent: #d95926;
@@ -55,15 +64,18 @@
 
 	:root[data-theme="dark"] {
 		color-scheme: dark;
-		--color-paper: #16130f;
-		--color-card: #1f1b16;
-		--color-ink: #f2ede6;
-		--color-ink-2: #c9c0b4;
-		--color-muted: #8f877c;
-		--color-line: #2e2822;
-		--color-wash: #27221c;
+		--color-paper: #121214;
+		--color-card: #18181b;
+		--color-ink: #f4f4f5;
+		--color-ink-2: #c4c4cc;
+		--color-muted: #8e8e98;
+		--color-line: #2c2c31;
+		--color-wash: #222226;
+		--color-frame: #222226;
 		--color-accent: #e07a4f;
-		--color-accent-ink: #16130f;
+		--color-accent-ink: #121214;
+		--color-meter: #d4d4d8;
+		--color-meter-track: #2c2c31;
 		--color-viz-fill: #3987e5;
 		--color-viz-track: #104281;
 		--color-viz-accent: #d95926;
@@ -86,7 +98,7 @@
 	.card {
 		background: var(--color-card);
 		border: 1px solid var(--color-line);
-		border-radius: 1rem;
+		border-radius: 1.375rem;
 	}
 
 	.btn {
@@ -114,10 +126,20 @@
 
 	.btn-quiet {
 		border: 1px solid var(--color-line);
+		background: var(--color-card);
 		color: var(--color-ink);
 	}
 
 	.btn-quiet:hover {
+		background: var(--color-wash);
+	}
+
+	.btn-outline {
+		border: 1px solid var(--color-ink);
+		color: var(--color-ink);
+	}
+
+	.btn-outline:hover {
 		background: var(--color-wash);
 	}
 
@@ -127,22 +149,31 @@
 	}
 
 	.eyebrow {
-		font-size: 0.72rem;
-		letter-spacing: 0.18em;
-		text-transform: uppercase;
-		color: var(--color-muted);
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.8125rem;
+		color: var(--color-ink-2);
+	}
+
+	.eyebrow::before {
+		content: "";
+		width: 1.125rem;
+		height: 1px;
+		background: currentColor;
 	}
 
 	.field-label {
 		display: block;
-		font-size: 0.85rem;
+		font-size: 0.8125rem;
 		font-weight: 500;
-		margin-bottom: 0.4rem;
+		color: var(--color-ink-2);
+		margin-bottom: 0.35rem;
 	}
 
 	.input {
 		width: 100%;
-		border-radius: 0.75rem;
+		border-radius: 0.875rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-card);
 		padding: 0.6rem 0.8rem;
@@ -161,10 +192,68 @@
 		align-items: center;
 		gap: 0.35rem;
 		border-radius: 999px;
-		border: 1px solid var(--color-line);
 		background: var(--color-wash);
-		padding: 0.15rem 0.6rem;
-		font-size: 0.8rem;
+		padding: 0.3rem 0.7rem;
+		font-size: 0.8125rem;
+	}
+
+	/* Segmented control: a wash track whose pressed or selected item lifts onto a card. */
+	.segmented {
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		border-radius: 1.375rem;
+		background: var(--color-wash);
+		padding: 0.25rem;
+	}
+
+	.segment {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		min-height: 2.25rem;
+		border-radius: 999px;
+		padding: 0 0.9rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--color-ink-2);
+	}
+
+	.segment:hover:not(:disabled) {
+		color: var(--color-ink);
+	}
+
+	.segment:disabled {
+		opacity: 0.4;
+	}
+
+	.segment:is([aria-selected="true"], [aria-pressed="true"]) {
+		background: var(--color-card);
+		color: var(--color-ink);
+		box-shadow:
+			0 1px 2px rgb(24 24 27 / 0.12),
+			0 0 0 1px rgb(24 24 27 / 0.06);
+	}
+
+	/* Attribution on a photo (Wikipedia images are CC BY-SA). */
+	.photo-credit {
+		position: absolute;
+		border-radius: 6px;
+		background: rgb(0 0 0 / 0.5);
+		padding: 2px 6px;
+		font-size: 11px;
+		line-height: 1.3;
+		color: #fff;
+	}
+
+	.photo-credit:hover {
+		background: rgb(0 0 0 / 0.7);
+	}
+
+	/* Category stamp standing in for a missing photo; --stamp is the category hue. */
+	.stamp {
+		background: color-mix(in oklab, var(--stamp) 13%, var(--color-card));
+		color: color-mix(in oklab, var(--stamp) 70%, var(--color-ink));
 	}
 
 	.tabular {

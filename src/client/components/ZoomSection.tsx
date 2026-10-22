@@ -8,7 +8,7 @@ import { Icon } from "./ui.tsx";
 const MapView = lazy(() => import("./MapView.tsx"));
 
 function MapFallback() {
-	return <div className="grid h-[22rem] place-items-center rounded-2xl border border-line bg-wash text-sm text-muted">Loading map…</div>;
+	return <div className="grid h-[22rem] place-items-center rounded-[1.375rem] border border-line bg-wash text-sm text-muted">Loading map…</div>;
 }
 
 function mapFor(result: ZoomResult, hotspot: Hotspot): Omit<MapViewProps, "ariaLabel"> & { legend: Parameters<typeof MapLegend>[0] } {
@@ -75,47 +75,41 @@ export function ZoomSection({
 		) : null;
 	}
 
+	const blurb = result ? [ZOOM_LEVELS.find((l) => l.id === result.level)?.blurb, result.note].filter(Boolean).join(" · ") : "";
+
 	return (
-		<section aria-label="Alternatives" className="space-y-5">
-			<div role="tablist" aria-label="How far will you go?" className="flex flex-wrap gap-2">
-				{ZOOM_LEVELS.map((level) => {
-					const levelResult = zooms[level.id];
-					const isActive = level.id === current;
-					return (
-						<button
-							key={level.id}
-							type="button"
-							role="tab"
-							aria-selected={isActive}
-							disabled={!levelResult}
-							onClick={() => setActive(level.id)}
-							className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
-								isActive ? "border-ink bg-ink text-card" : "border-line text-ink-2 hover:bg-wash disabled:opacity-40"
-							}`}
-						>
-							{level.label}
-							{levelResult ? <span className="ml-1.5 opacity-70">{levelResult.items.length}</span> : null}
-						</button>
-					);
-				})}
+		<section aria-labelledby="elsewheres" className="space-y-6">
+			<div className="flex flex-wrap items-end justify-between gap-4">
+				<div className="space-y-1.5">
+					<h2 id="elsewheres" className="font-serif text-[2.5rem] leading-none sm:text-[2.75rem]">
+						Your elsewheres
+					</h2>
+					{blurb ? <p className="text-sm text-ink-2">{blurb}</p> : null}
+				</div>
+				<div role="tablist" aria-label="How far will you go?" className="segmented">
+					{ZOOM_LEVELS.map((level) => {
+						const levelResult = zooms[level.id];
+						return (
+							<button
+								key={level.id}
+								type="button"
+								role="tab"
+								aria-selected={level.id === current}
+								disabled={!levelResult}
+								onClick={() => setActive(level.id)}
+								className="segment"
+							>
+								{level.label}
+								{levelResult ? <span className="text-xs font-normal text-muted">{levelResult.items.length}</span> : null}
+							</button>
+						);
+					})}
+				</div>
 			</div>
 
 			{result && map ? (
-				<div className="space-y-4" role="tabpanel">
-					<p className="text-sm text-ink-2">
-						{ZOOM_LEVELS.find((l) => l.id === result.level)?.blurb}
-						{result.note ? ` · ${result.note}` : ""}
-					</p>
-					<Suspense fallback={<MapFallback />}>
-						<MapView
-							heat={map.heat}
-							points={map.points}
-							links={map.links}
-							ariaLabel={`Map of ${ZOOM_LEVELS.find((l) => l.id === result.level)?.label.toLowerCase()} alternatives`}
-						/>
-					</Suspense>
-					<MapLegend {...map.legend} />
-					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+				<div className="space-y-8" role="tabpanel" aria-labelledby="elsewheres">
+					<div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
 						{result.level === "city"
 							? result.items.map((item) => (
 									<SpotTwinCard key={item.id} item={item} onPlan={onPlan} busy={planBusy} selected={selected?.itemId === item.id} />
@@ -136,6 +130,18 @@ export function ZoomSection({
 											selected={selected?.itemId === item.id}
 										/>
 									))}
+					</div>
+					<div className="space-y-3">
+						<h3 className="text-[0.95rem] font-semibold">On the map</h3>
+						<Suspense fallback={<MapFallback />}>
+							<MapView
+								heat={map.heat}
+								points={map.points}
+								links={map.links}
+								ariaLabel={`Map of ${ZOOM_LEVELS.find((l) => l.id === result.level)?.label.toLowerCase()} alternatives`}
+							/>
+						</Suspense>
+						<MapLegend {...map.legend} />
 					</div>
 				</div>
 			) : null}

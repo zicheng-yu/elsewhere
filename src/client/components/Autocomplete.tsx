@@ -34,10 +34,22 @@ interface ComboboxProps {
 	inputId?: string;
 	onBackspaceEmpty?: () => void;
 	ariaLabel?: string;
+	inputClassName?: string;
 }
 
 /** Text input with a suggestion listbox (ARIA combobox pattern). Enter picks the highlighted item or the typed text. */
-export function Combobox({ kind, value, onValueChange, onPick, placeholder, near, inputId, onBackspaceEmpty, ariaLabel }: ComboboxProps) {
+export function Combobox({
+	kind,
+	value,
+	onValueChange,
+	onPick,
+	placeholder,
+	near,
+	inputId,
+	onBackspaceEmpty,
+	ariaLabel,
+	inputClassName = "py-0.5 text-[0.95rem]",
+}: ComboboxProps) {
 	const suggestions = useSuggestions(kind, value, near);
 	const [open, setOpen] = useState(false);
 	const [active, setActive] = useState(-1);
@@ -81,7 +93,7 @@ export function Combobox({ kind, value, onValueChange, onPick, placeholder, near
 				aria-controls={listId}
 				aria-autocomplete="list"
 				aria-activedescendant={show && active >= 0 ? `${listId}-${active}` : undefined}
-				className="w-full min-w-[8rem] bg-transparent py-0.5 text-[0.95rem] outline-none placeholder:text-muted"
+				className={`w-full min-w-[8rem] bg-transparent outline-none placeholder:text-muted ${inputClassName}`}
 				value={value}
 				placeholder={placeholder}
 				onChange={(event) => {
@@ -99,7 +111,7 @@ export function Combobox({ kind, value, onValueChange, onPick, placeholder, near
 				<ul
 					id={listId}
 					role="listbox"
-					className="absolute top-full right-0 left-0 z-30 mt-2 max-h-72 overflow-auto rounded-xl border border-line bg-card p-1 shadow-lg"
+					className="absolute top-full right-0 left-0 z-30 mt-2 max-h-72 min-w-[16rem] overflow-auto rounded-2xl border border-line bg-card p-1 shadow-lg"
 				>
 					{suggestions.map((item, index) => (
 						<li
@@ -107,7 +119,7 @@ export function Combobox({ kind, value, onValueChange, onPick, placeholder, near
 							id={`${listId}-${index}`}
 							role="option"
 							aria-selected={index === active}
-							className={`cursor-pointer rounded-lg px-3 py-2 text-sm ${index === active ? "bg-wash" : ""}`}
+							className={`cursor-pointer rounded-xl px-3 py-2 text-sm ${index === active ? "bg-wash" : ""}`}
 							onMouseDown={(event) => {
 								event.preventDefault();
 								clearTimeout(blurTimer.current);
@@ -192,7 +204,12 @@ export function ChipInput({
 			{remaining.length > 0 && values.length < max ? (
 				<div className="mt-2 flex flex-wrap gap-1.5">
 					{remaining.slice(0, 8).map((pick) => (
-						<button key={pick} type="button" className="chip text-ink-2 hover:bg-card" onClick={() => add(pick)}>
+						<button
+							key={pick}
+							type="button"
+							className="rounded-full border border-line px-3 py-1 text-[0.8125rem] text-ink-2 hover:border-ink hover:text-ink"
+							onClick={() => add(pick)}
+						>
 							+ {pick}
 						</button>
 					))}

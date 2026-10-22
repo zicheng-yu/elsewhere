@@ -2,16 +2,18 @@ import { pct, percentile } from "../../shared/format.ts";
 import type { DupeScore } from "../../shared/types.ts";
 
 /** Dupe Score breakdown: one meter per component, value in text ink, source on hover/focus. */
-export function ScoreMeters({ score, compact = false }: { score: DupeScore; compact?: boolean }) {
+export function ScoreMeters({ score, showTotal = true }: { score: DupeScore; showTotal?: boolean }) {
 	return (
 		<div className="space-y-2">
-			<div className="flex items-baseline justify-between">
-				<span className="text-sm text-ink-2">Dupe Score</span>
-				<span className="text-2xl font-semibold">{Math.round(score.total * 100)}</span>
-			</div>
-			<ul className={compact ? "space-y-1.5" : "space-y-2"}>
+			{showTotal ? (
+				<div className="flex items-baseline justify-between">
+					<span className="text-sm text-ink-2">Dupe Score</span>
+					<span className="text-2xl font-semibold">{Math.round(score.total * 100)}</span>
+				</div>
+			) : null}
+			<ul className="space-y-1.5">
 				{score.components.map((component) => (
-					<li key={component.key} className="grid grid-cols-[6.5rem_1fr_2.75rem] items-center gap-2 text-xs" title={component.source}>
+					<li key={component.key} className="grid grid-cols-[6rem_1fr_2.25rem] items-center gap-2.5 text-xs" title={component.source}>
 						<span className="text-ink-2">{component.label}</span>
 						<span
 							role="meter"
@@ -19,12 +21,9 @@ export function ScoreMeters({ score, compact = false }: { score: DupeScore; comp
 							aria-valuemin={0}
 							aria-valuemax={100}
 							aria-valuenow={Math.round(component.value * 100)}
-							className="relative h-2 overflow-hidden rounded-full bg-viz-track"
+							className="relative h-1 overflow-hidden rounded-full bg-meter-track"
 						>
-							<span
-								className="absolute inset-y-0 left-0 rounded-full bg-viz-fill"
-								style={{ width: `${Math.max(2, component.value * 100)}%` }}
-							/>
+							<span className="absolute inset-y-0 left-0 rounded-full bg-meter" style={{ width: `${Math.max(2, component.value * 100)}%` }} />
 						</span>
 						<span className="tabular text-right text-ink">{pct(component.value)}</span>
 					</li>
@@ -34,6 +33,15 @@ export function ScoreMeters({ score, compact = false }: { score: DupeScore; comp
 				Weighted: {score.components.map((c) => `${c.label.toLowerCase()} ${Math.round(c.weight * 100)}%`).join(" · ")}
 			</p>
 		</div>
+	);
+}
+
+/** The total as a pill that sits on a card's photo. */
+export function ScorePill({ score }: { score: DupeScore }) {
+	return (
+		<span className="absolute top-3 left-3 inline-flex items-baseline gap-1.5 rounded-full bg-card/95 px-3 py-1.5 text-xs text-ink-2">
+			Dupe Score <strong className="text-[0.95rem] font-semibold text-ink">{Math.round(score.total * 100)}</strong>
+		</span>
 	);
 }
 

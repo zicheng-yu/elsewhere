@@ -7,8 +7,9 @@ import { EvidenceDrawer } from "./components/EvidenceDrawer.tsx";
 import { HotspotHeader } from "./components/HotspotHeader.tsx";
 import { IntakeForm } from "./components/IntakeForm.tsx";
 import { LocalGuide } from "./components/LocalGuide.tsx";
+import { Postcards } from "./components/Postcards.tsx";
 import { ScenarioGrid } from "./components/ScenarioGrid.tsx";
-import { Badge, Icon, SectionTitle } from "./components/ui.tsx";
+import { Badge, Icon } from "./components/ui.tsx";
 import { ZoomSection } from "./components/ZoomSection.tsx";
 import { api, ApiError } from "./lib/api.ts";
 import { emptyJourney, journeyReducer, type JourneyView } from "./lib/journey.ts";
@@ -25,31 +26,33 @@ function ModeBadges({ modes }: { modes?: RunModes }) {
 			) : (
 				<Badge tone="good">Live Qloo data</Badge>
 			)}
-			{modes.agent === "scripted" ? (
-				<Badge title="A deterministic planner calls the same tools as the language-model agent.">Scripted planner</Badge>
-			) : (
-				<Badge tone="good">Claude agent</Badge>
-			)}
+			<span className="hidden sm:contents">
+				{modes.agent === "scripted" ? (
+					<Badge title="A deterministic planner calls the same tools as the language-model agent.">Scripted planner</Badge>
+				) : (
+					<Badge tone="good">Claude agent</Badge>
+				)}
+			</span>
 		</div>
 	);
 }
 
 function Header({ modes, busy }: { modes?: RunModes; busy: boolean }) {
 	return (
-		<header className="sticky top-0 z-20 border-b border-line bg-paper/85 backdrop-blur">
+		<header className="sticky top-0 z-20 border-b border-line/70 bg-paper/90 backdrop-blur-md">
 			{busy ? (
 				<div className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden" role="progressbar" aria-label="Working">
 					<div className="h-full w-1/3 animate-[progress_1.4s_ease-in-out_infinite] bg-accent" />
 				</div>
 			) : null}
-			<div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+			<div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6 lg:px-8">
 				<a
 					href="/"
 					onClick={(event) => {
 						event.preventDefault();
 						navigate("/");
 					}}
-					className="font-serif text-xl"
+					className="font-serif text-[1.75rem] leading-none tracking-tight"
 				>
 					Elsewhere
 				</a>
@@ -61,12 +64,13 @@ function Header({ modes, busy }: { modes?: RunModes; busy: boolean }) {
 
 function Footer({ modes }: { modes?: RunModes }) {
 	return (
-		<footer className="mx-auto max-w-7xl space-y-2 px-4 py-10 text-xs text-muted sm:px-6 lg:px-8">
-			<p>
+		<footer className="mx-auto flex max-w-7xl flex-wrap items-end justify-between gap-x-10 gap-y-4 px-4 py-10 text-xs leading-relaxed text-muted sm:px-6 lg:px-8">
+			<p className="max-w-3xl">
 				Taste data: Qloo Insights API{modes?.qloo === "mock" ? " (this deployment currently uses a synthetic demo world)" : ""}. Popularity is Qloo's
-				cultural-attention percentile, not a visitor count. Maps: © OpenStreetMap contributors, OpenFreeMap. City photos: Wikipedia (CC BY-SA).
+				cultural-attention percentile, not a visitor count. Maps: © OpenStreetMap contributors, OpenFreeMap. Photos: Wikipedia (CC BY-SA). Built for
+				the Qloo Agentic Hackathon.
 			</p>
-			<p>Built for the Qloo Agentic Hackathon. Spread, not shift: visit gently, spend locally.</p>
+			<p className="font-serif text-lg text-ink italic">Spread, not shift: visit gently, spend locally.</p>
 		</footer>
 	);
 }
@@ -80,39 +84,45 @@ const HOW_IT_WORKS = [
 
 function Home({ onStart, busy }: { onStart: (request: TripRequest) => void; busy: boolean }) {
 	return (
-		<main className="mx-auto max-w-7xl space-y-16 px-4 py-10 sm:px-6 lg:px-8">
-			<section className="grid items-start gap-10 lg:grid-cols-[1fr_32rem]">
-				<div className="space-y-6 pt-4">
-					<p className="eyebrow">Elsewhere</p>
-					<h1 className="font-serif text-5xl leading-[1.05] sm:text-6xl">
+		<main>
+			<section className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-16 gap-y-12 px-4 pt-10 pb-16 sm:px-6 sm:pt-16 sm:pb-24 lg:px-8">
+				<div className="min-w-0 flex-[1_1_30rem] space-y-7">
+					<p className="eyebrow">An AI travel agent on Qloo's taste graph</p>
+					<h1 className="font-serif text-[3.5rem] leading-[0.94] tracking-[-0.015em] sm:text-7xl lg:text-[5.75rem]">
 						Same soul,
 						<br />
-						fewer crowds.
+						<em>fewer crowds.</em>
 					</h1>
-					<p className="max-w-xl text-lg text-ink-2">
-						Tell Elsewhere where you were headed and what you love. It finds the quieter temple across town, the day trip with the same
-						feel, or a twin city across the world, and then guides you there like a local.
+					<p className="max-w-xl text-lg leading-relaxed text-ink-2">
+						Tell Elsewhere where you were headed and what you love. It finds the quieter temple across town, the day trip with the same feel, or a twin
+						city across the world, then guides you there like a local.
 					</p>
-					<ol className="grid gap-4 sm:grid-cols-2">
+					<IntakeForm onSubmit={onStart} busy={busy} />
+				</div>
+				<div className="min-w-0 flex-[1_1_26rem]">
+					<Postcards />
+				</div>
+			</section>
+
+			<div className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 sm:pb-28 lg:px-8">
+				<ScenarioGrid onRun={onStart} busy={busy} />
+			</div>
+
+			<section aria-labelledby="how-title" className="bg-wash">
+				<div className="mx-auto max-w-7xl space-y-10 px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+					<h2 id="how-title" className="max-w-2xl font-serif text-4xl leading-[1.05] sm:text-[2.75rem]">
+						Four steps from <em>where everyone goes</em> to where you'll love.
+					</h2>
+					<ol className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
 						{HOW_IT_WORKS.map(([title, text], index) => (
-							<li key={title} className="space-y-1">
-								<p className="text-sm font-medium">
-									<span className="mr-1.5 text-muted">{index + 1}</span>
-									{title}
-								</p>
-								<p className="text-sm text-ink-2">{text}</p>
+							<li key={title} className="space-y-2.5 border-t border-line pt-4">
+								<span className="block font-serif text-3xl leading-none text-accent italic">{String(index + 1).padStart(2, "0")}</span>
+								<p className="font-semibold">{title}</p>
+								<p className="text-sm leading-relaxed text-ink-2">{text}</p>
 							</li>
 						))}
 					</ol>
 				</div>
-				<IntakeForm onSubmit={onStart} busy={busy} />
-			</section>
-
-			<section>
-				<SectionTitle eyebrow="Featured journeys" title="Start from an overtouristed classic">
-					Each one is a real hotspot; every alternative is computed live. Swap the taste to see the picks change.
-				</SectionTitle>
-				<ScenarioGrid onRun={onStart} busy={busy} />
 			</section>
 		</main>
 	);
@@ -146,19 +156,19 @@ function JourneyScreen({
 	};
 
 	return (
-		<main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+		<main className="mx-auto max-w-7xl space-y-8 px-4 pt-5 pb-12 sm:px-6 lg:px-8">
 			<div className="flex flex-wrap items-center justify-between gap-3">
-				<button type="button" className="text-sm text-ink-2 hover:text-ink" onClick={() => navigate("/")}>
-					← New journey
+				<button type="button" className="inline-flex min-h-9 items-center gap-1.5 text-sm text-ink-2 hover:text-ink" onClick={() => navigate("/")}>
+					<Icon name="back" /> New journey
 				</button>
 				<div className="flex gap-2">
 					{view.status === "done" && view.steps.length === 0 && view.journeyId ? (
-						<button type="button" className="btn btn-quiet px-3 py-1.5 text-xs" onClick={onReplay}>
+						<button type="button" className="btn btn-quiet px-3.5 py-1.5 text-[0.8125rem]" onClick={onReplay}>
 							<Icon name="sparkle" /> Replay the agent
 						</button>
 					) : null}
 					{view.journeyId && view.hotspot ? (
-						<button type="button" className="btn btn-quiet px-3 py-1.5 text-xs" onClick={share}>
+						<button type="button" className="btn btn-quiet px-3.5 py-1.5 text-[0.8125rem]" onClick={share}>
 							<Icon name="share" /> {copied ? "Link copied" : "Share"}
 						</button>
 					) : null}
@@ -170,7 +180,7 @@ function JourneyScreen({
 					<div className="flex items-start gap-3">
 						<Icon name="alert" className="mt-1.5 size-5 shrink-0 text-serious" />
 						<div className="space-y-1.5">
-							<h1 className="font-serif text-2xl sm:text-3xl">{view.clarify ? "Which place did you mean?" : "We couldn't read that trip"}</h1>
+							<h1 className="font-serif text-3xl sm:text-4xl">{view.clarify ? "Which place did you mean?" : "We couldn't read that trip"}</h1>
 							<p className="text-sm text-ink-2">{view.clarify?.question ?? view.error}</p>
 						</div>
 					</div>
@@ -218,25 +228,11 @@ function JourneyScreen({
 					{view.hotspot ? (
 						<HotspotHeader hotspot={view.hotspot} />
 					) : running ? (
-						<div className="card h-40 animate-pulse bg-wash" aria-hidden="true" />
+						<div className="h-[clamp(21rem,34vw,28.75rem)] animate-pulse rounded-[1.75rem] bg-wash" aria-hidden="true" />
 					) : null}
 
-					<div className="grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
-						<aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-							<Narrative text={view.narrative} running={running} />
-							{view.steps.length > 0 ? (
-								<AgentTrace
-									steps={view.steps}
-									thinking={view.thinking}
-									running={running}
-									evidenceCount={view.evidence.length}
-									onShowEvidence={onShowEvidence}
-								/>
-							) : null}
-							<FollowUp modes={view.modes} busy={running} onSend={onMessage} />
-							<BaselinePanel request={view.request} />
-						</aside>
-						<div className="min-w-0 space-y-12">
+					<div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+						<div className="min-w-0 space-y-14">
 							{view.hotspot ? (
 								<ZoomSection
 									hotspot={view.hotspot}
@@ -256,6 +252,20 @@ function JourneyScreen({
 								<LocalGuide plan={view.plan} busy={running} onReplan={(prefs) => onPlan(view.plan?.target.ref ?? { level: "hotspot" }, prefs)} />
 							) : null}
 						</div>
+						<aside className="space-y-4 lg:sticky lg:top-20 lg:self-start" aria-label="The agent">
+							<Narrative text={view.narrative} running={running} />
+							{view.steps.length > 0 ? (
+								<AgentTrace
+									steps={view.steps}
+									thinking={view.thinking}
+									running={running}
+									evidenceCount={view.evidence.length}
+									onShowEvidence={onShowEvidence}
+								/>
+							) : null}
+							<FollowUp modes={view.modes} busy={running} onSend={onMessage} />
+							<BaselinePanel request={view.request} />
+						</aside>
 					</div>
 				</>
 			)}

@@ -19,9 +19,9 @@ export function BaselinePanel({ request }: { request?: TripRequest }) {
 	};
 
 	return (
-		<section className="card space-y-3 p-4" aria-label="Comparison with a plain language model">
+		<section className="card space-y-3 p-5" aria-label="Comparison with a plain language model">
 			<div className="flex items-center justify-between gap-3">
-				<h2 className="text-sm font-semibold">Why not just ask an LLM?</h2>
+				<h2 className="text-[0.95rem] font-semibold">Why not just ask an LLM?</h2>
 				{state.status === "idle" ? (
 					<button type="button" className="btn btn-quiet px-3 py-1 text-xs" onClick={run}>
 						Compare
@@ -40,7 +40,7 @@ export function BaselinePanel({ request }: { request?: TripRequest }) {
 			{state.text ? (
 				<div className="space-y-2">
 					<p className="text-xs text-muted">Same model, no Qloo tools, no evidence:</p>
-					<div className="max-h-72 space-y-2 overflow-auto rounded-xl bg-wash p-3 text-sm">
+					<div className="max-h-72 space-y-2 overflow-auto rounded-2xl bg-wash p-3 text-sm">
 						{state.text.split(/\n{2,}/).map((paragraph) => (
 							<p key={paragraph.slice(0, 24)}>{paragraph}</p>
 						))}
