@@ -65,14 +65,28 @@ const ESSENTIAL_TAG = /^urn:tag:(category:place|genre:(place|locality|destinatio
 const TRAIT_FAMILIES = ["ambience", "setting", "interests", "culture", "scenery", "characteristic", "decor", "view", "noise_level", "cuisine", "popular_food_item", "activity_type"];
 const MAX_TRAIT_TAGS = 10;
 
-function slimTags(raw: unknown): Obj[] | undefined {
+/** The entity kind ("destination", "place", ...) from an entity's types. */
+function kindOf(raw: Obj): string | undefined {
+	const types = Array.isArray(raw.types) ? raw.types : [raw.type];
+	const type = types.find((t): t is string => typeof t === "string" && t.startsWith("urn:entity:"));
+	return type?.slice("urn:entity:".length).split(":")[0];
+}
+
+/** Search results name genres without the entity kind ("urn:tag:genre:art_culture"); insights include it. */
+function canonicalTagId(id: string, kind: string | undefined): string {
+	return kind && /^urn:tag:genre:[a-z0-9_]+$/.test(id) ? `urn:tag:genre:${kind}:${id.slice("urn:tag:genre:".length)}` : id;
+}
+
+function slimTags(raw: unknown, kind?: string): Obj[] | undefined {
 	if (!Array.isArray(raw)) return undefined;
 	const essential: Obj[] = [];
 	const traits: { tag: Obj; rank: number }[] = [];
 	for (const item of raw) {
 		if (!isObj(item)) continue;
-		const id = typeof item.tag_id === "string" && item.tag_id.startsWith("urn:") ? item.tag_id : (item.id ?? item.value);
-		if (typeof id !== "string" || !USEFUL_TAG.test(id)) continue;
+		const rawId = typeof item.tag_id === "string" && item.tag_id.startsWith("urn:") ? item.tag_id : (item.id ?? item.value);
+		if (typeof rawId !== "string") continue;
+		const id = canonicalTagId(rawId, kind);
+		if (!USEFUL_TAG.test(id)) continue;
 		// The type is the ID minus its last segment; normalizers derive it.
 		const tag = { id, name: item.name };
 		if (ESSENTIAL_TAG.test(id)) {
@@ -137,7 +151,7 @@ function slimEntity(raw: Obj): Obj {
 		query,
 		disambiguation: clip(raw.disambiguation, 120),
 		properties: slimProperties(raw.properties),
-		tags: slimTags(raw.tags),
+		tags: slimTags(raw.tags, kindOf(raw)),
 	};
 	return pick(out, Object.keys(out)) ?? {};
 }

@@ -44,7 +44,7 @@ export function narrateHotspot(hotspot: Hotspot): string {
 
 function cityLine(twin: CityTwin, home: string): string {
 	const soul = pct(component(twin.score, "soul"));
-	const traits = twin.sharedTraits.length > 0 ? `, sharing ${joinNames(twin.sharedTraits.slice(0, 2).map((t) => t.toLowerCase()))}` : "";
+	const traits = twin.sharedTraits.length > 0 ? `, sharing ${joinNames(twin.sharedTraits.slice(0, 2))}` : "";
 	const season = twin.season?.isBestMonth
 		? ` ${monthName(twin.season.month)} is one of its best months.`
 		: twin.season?.isPeak

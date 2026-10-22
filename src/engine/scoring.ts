@@ -3,13 +3,14 @@ import type { DupeScore, ScoreComponent, ScoreKey, ZoomLevel } from "../shared/t
 /** Dupe Score weights per zoom level. Missing components are dropped and the rest renormalized. */
 export const WEIGHTS: Record<ZoomLevel, Partial<Record<ScoreKey, number>>> = {
 	city: { soul: 0.4, taste: 0.3, crowd: 0.25, proximity: 0.05 },
-	region: { soul: 0.35, taste: 0.3, crowd: 0.2, proximity: 0.15 },
-	country: { soul: 0.4, taste: 0.3, crowd: 0.2, season: 0.1 },
-	world: { soul: 0.4, taste: 0.3, crowd: 0.2, season: 0.1 },
+	region: { soul: 0.3, character: 0.15, taste: 0.25, crowd: 0.15, proximity: 0.15 },
+	country: { soul: 0.3, character: 0.25, taste: 0.25, crowd: 0.2, proximity: 0.1, season: 0.1 },
+	world: { soul: 0.3, character: 0.25, taste: 0.25, crowd: 0.2, proximity: 0.1, season: 0.1 },
 };
 
 export const SCORE_LABELS: Record<ScoreKey, string> = {
 	soul: "Soul match",
+	character: "Character",
 	taste: "Your taste",
 	crowd: "Crowd relief",
 	proximity: "Proximity",
@@ -23,13 +24,13 @@ function clamp01(value: number): number {
 /**
  * Crowd relief from two popularity percentiles. It compares the tail shares:
  * the 99.5th percentile leaves 0.5% above it, the 62nd leaves 38%, a 76× ratio.
- * Score = log10(ratio) / 2, so 10× → 0.5 and 100× → 1.
+ * Score = log(ratio) / log(fullAt): with the default 100, 10× → 0.5 and 100× → 1.
  */
-export function crowdRelief(fromPopularity: number | undefined, toPopularity: number | undefined): number | undefined {
+export function crowdRelief(fromPopularity: number | undefined, toPopularity: number | undefined, fullAt = 100): number | undefined {
 	if (fromPopularity === undefined || toPopularity === undefined) return undefined;
 	const tailFrom = Math.max(0.001, 1 - fromPopularity);
 	const tailTo = Math.max(0.001, 1 - toPopularity);
-	return clamp01(Math.log10(tailTo / tailFrom) / 2);
+	return clamp01(Math.log10(tailTo / tailFrom) / Math.log10(fullAt));
 }
 
 /** 1 at zero distance, 0 at `scaleKm` or beyond. */

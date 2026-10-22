@@ -88,6 +88,8 @@ export interface PlaceQuery {
 	signalIds?: string[];
 	signalTagIds?: string[];
 	area?: SearchArea;
+	/** Several circles at once (the towns of a day trip), instead of `area`. */
+	areas?: { lat: number; lon: number; radiusKm: number }[];
 	popularityMax?: number;
 	popularityMin?: number;
 	excludeIds?: string[];
@@ -116,6 +118,20 @@ function clampTake(take: number | undefined, fallback: number): number {
 /** WKT point; WKT puts longitude first. */
 export function wktPoint(lat: number, lon: number): string {
 	return `POINT(${lon.toFixed(5)} ${lat.toFixed(5)})`;
+}
+
+/** Circles as one WKT MULTIPOLYGON, so a single query covers several towns. */
+export function wktCircles(circles: { lat: number; lon: number; radiusKm: number }[], sides = 12): string {
+	const polygons = circles.map(({ lat, lon, radiusKm }) => {
+		const points = Array.from({ length: sides + 1 }, (_, i) => {
+			const angle = (2 * Math.PI * (i % sides)) / sides;
+			const dLat = (radiusKm / 111.32) * Math.sin(angle);
+			const dLon = (radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180))) * Math.cos(angle);
+			return `${(lon + dLon).toFixed(4)} ${(lat + dLat).toFixed(4)}`;
+		});
+		return `((${points.join(",")}))`;
+	});
+	return `MULTIPOLYGON(${polygons.join(",")})`;
 }
 
 /** Location filter for an area: the Qloo locality when known, else a circle. */
@@ -180,6 +196,8 @@ export class QlooApi {
 		signalIds?: string[];
 		signalTagIds?: string[];
 		resultIds?: string[];
+		/** Only destinations inside this circle (towns for a day trip). */
+		area?: SearchArea;
 		take?: number;
 		offset?: number;
 		note?: string;
@@ -190,6 +208,7 @@ export class QlooApi {
 				"filter.type": ENTITY_TYPE.destination,
 				"signal.interests.entities": options.signalIds,
 				"signal.interests.tags": options.signalTagIds,
+				...areaParams(options.area),
 				"filter.results.entities": options.resultIds,
 				take: clampTake(options.take, 30),
 				offset: options.offset,
@@ -245,7 +264,7 @@ export class QlooApi {
 				"filter.type": ENTITY_TYPE.place,
 				"signal.interests.entities": query.signalIds,
 				"signal.interests.tags": query.signalTagIds,
-				...areaParams(query.area),
+				...(query.areas?.length ? { "filter.location": wktCircles(query.areas) } : areaParams(query.area)),
 				"filter.popularity.max": query.popularityMax,
 				"filter.popularity.min": query.popularityMin,
 				"filter.exclude.entities": query.excludeIds,

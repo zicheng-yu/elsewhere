@@ -223,7 +223,8 @@ export async function resolveTrip(api: QlooApi, request: TripRequest): Promise<H
 			country: reference?.country ?? home.country,
 			countryCode: home.countryCode ?? reference?.countryCode,
 			region: reference?.region ?? home.region,
-			tags: cityProfile?.tags ?? home.tags,
+			// The destination's genres (character) and the city's month tags (seasons).
+			tags: uniqueById([...home.tags, ...(cityProfile?.tags ?? [])]),
 		},
 		destinationId,
 		area,

@@ -116,7 +116,7 @@ export interface TripRequest {
 	scenarioId?: string;
 }
 
-export type ScoreKey = "soul" | "taste" | "crowd" | "proximity" | "season";
+export type ScoreKey = "soul" | "character" | "taste" | "crowd" | "proximity" | "season";
 
 export interface ScoreComponent {
 	key: ScoreKey;

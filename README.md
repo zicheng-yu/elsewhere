@@ -17,18 +17,18 @@ Elsewhere does it differently:
 
 ## How it works
 
-It starts by reading the hotspot: Qloo's peak, best and off-season month tags for the destination, and a crowd calendar of its weekly attention over the past year.
+It starts by reading the hotspot: Qloo's peak, best, off-season and worst months for the destination, with each month's events and travel advisories.
 
 Then pick how far you'll go:
 
 | Zoom level | Question it answers | Qloo signal |
 | --- | --- | --- |
 | Same city | "Where can I get the Fushimi Inari feeling without the queue?" | Place-to-place affinity inside the city, capped by popularity |
-| Day trip | "Which nearby town has the same feel?" | Place affinity within 150 km, excluding the crowded city |
-| Same country | "What is my Kyoto, minus the crowds?" | Locality-to-locality affinity, re-scored against your taste |
+| Day trip | "Which nearby town has the same feel?" | Qloo's destinations within 120 km that share the city's genres, and their best-matching places |
+| Same country | "What is my Kyoto, minus the crowds?" | Destination-to-destination affinity and shared genres, re-scored against your taste |
 | Beyond borders | "Where else has this soul?" | The same, across borders |
 
-Every alternative gets a transparent **Dupe Score** built from four components: soul match, your taste, crowd relief, and proximity or season fit. Each number traces back to a Qloo field, and every request is listed in the in-app evidence drawer.
+Every alternative gets a transparent **Dupe Score** built from soul match, character (shared Qloo destination genres), your taste, crowd relief, and proximity or season fit. Each number traces back to a Qloo field, and every request is listed in the in-app evidence drawer.
 
 Choosing **Go like a local** builds the rest of the trip:
 - where to base yourself, from Qloo's taste heatmap;
@@ -62,6 +62,7 @@ npm run dev:live     # the same against live Qloo data and the LLM agent (needs 
 npm test             # engine and agent-loop tests (synthetic transport, stubbed model)
 npm run typecheck
 npm run eval         # scenarios × personas against the synthetic world
+node --env-file=.dev.vars.live scripts/eval.ts --live   # the same on live Qloo data (cached in .qloo-cache/)
 ```
 
 **No keys needed.** By default the app uses a **synthetic demo world** (`QLOO_MODE=mock`) and the scripted planner (`AGENT_MODE=scripted`). The synthetic world uses real place names and approximate coordinates. Every popularity value, rating and taste vector is invented, and nothing in the repository comes from Qloo.
@@ -72,7 +73,8 @@ npm run eval         # scenarios × personas against the synthetic world
 3. Developer tools, all caching Qloo responses in the git-ignored `.qloo-cache/`:
    - `node --env-file=.dev.vars.live scripts/run-journey.ts kyoto-april --plan=city` runs a journey end to end and prints every level;
    - `node --env-file=.dev.vars.live scripts/qloo.ts /v2/insights filter.type=... take=10` summarizes any query;
-   - `node scripts/cpu-bench.ts kyoto-april` measures the engine's CPU time on cached responses;
+   - `node --env-file=.dev.vars.live scripts/explore-destinations.ts kyoto-april [--foreign] [--nearby]` lists the destinations Qloo finds similar to a scenario's city, or within a day trip, with genres and popularity;
+   - `node scripts/cpu-bench.ts kyoto-april` measures the engine's CPU time and D1 queries on cached responses;
    - `npm run validate:qloo` checks the endpoints Elsewhere relies on.
 
 ## Deploy
@@ -83,9 +85,11 @@ npx cf deploy        # Cloudflare Workers via the cf CLI
 
 This deploys the synthetic-data version. Going live means deploying in the `live` mode with the secrets attached: `npx cf deploy --mode live --secrets-file .dev.vars.live`. Set a credit limit on the OpenRouter key as an outer backstop to the app's own caps.
 
+Then warm the cache: `npm run warm -- --scripted` runs every featured scenario and plans each level's top pick with the scripted planner, which makes the same Qloo requests as the agent without any model calls. Add `--base=http://localhost:5175` to warm a local `dev:live` server instead.
+
 ## Stack
 
-- Cloudflare Workers, with static assets, KV, D1 and Rate Limiting, built and deployed with the `cf` CLI.
+- Cloudflare Workers, with static assets, D1 and Rate Limiting, built and deployed with the `cf` CLI.
 - React 19, Vite 8 and Tailwind 4 on the front end; Hono and Zod on the API.
 - Qloo Insights API; OpenRouter (OpenAI-compatible chat completions over plain `fetch`); MapLibre GL with OpenFreeMap tiles.
 

@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { geohashBounds, geohashCenter, geohashEncode, haversineKm } from "../src/engine/geo.ts";
 import { LiveTransport, QlooClient, QlooError, toSearchParams } from "../src/engine/qloo/client.ts";
+import { wktCircles } from "../src/engine/qloo/endpoints.ts";
 import { compareTraitsOf, heatCellsOf, invalidSignalsOf, toLocality, toPlace, toTaste } from "../src/engine/qloo/normalize.ts";
 import { slimResponse } from "../src/engine/qloo/slim.ts";
 import { buildScore, crowdRelief, proximity } from "../src/engine/scoring.ts";
 import { seasonInfo, seasonScore } from "../src/engine/season.ts";
 import { matchScore } from "../src/engine/text.ts";
+import { characterMatch, quietness } from "../src/engine/zoom/cities.ts";
 import { percentile } from "../src/shared/format.ts";
 import type { Locality } from "../src/shared/types.ts";
 
@@ -120,6 +122,20 @@ describe("real response shapes", () => {
 		expect(locality?.placeType).toBe("city");
 	});
 
+	it("reads genre tags from search results, which name them without the entity kind", () => {
+		const slim = slimResponse({
+			results: [
+				{
+					entity_id: "D1",
+					name: "Kyoto",
+					types: ["urn:entity:destination"],
+					tags: [{ name: "For the History", tag_id: "18203810-1931-4F34-B7D4-69C63F8C7B1D", type: "urn:tag:genre", value: "urn:tag:genre:for_the_history" }],
+				},
+			],
+		}) as { results: { tags: { id: string }[] }[] };
+		expect(slim.results[0]?.tags.map((t) => t.id)).toEqual(["urn:tag:genre:destination:for_the_history"]);
+	});
+
 	it("cleans destination names and reads geocodes", () => {
 		const destination = toLocality({
 			entity_id: "D1",
@@ -168,6 +184,16 @@ describe("client", () => {
 		expect(QlooError).toBeDefined();
 	});
 
+	it("retries a response whose body times out, then reports a timeout", async () => {
+		const stalled = () =>
+			new Response(new ReadableStream({ start: (controller) => controller.error(new DOMException("The operation was aborted due to timeout", "TimeoutError")) }));
+		const fetchSpy = vi.fn(async () => stalled());
+		vi.stubGlobal("fetch", fetchSpy);
+		const client = new QlooClient({ transport: new LiveTransport({ apiKey: "k", maxRetries: 1 }) });
+		await expect(client.get("/search", { query: "slow" })).rejects.toMatchObject({ kind: "timeout" });
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+	});
+
 	it("builds deterministic query strings", () => {
 		const params = toSearchParams({ take: 5, "filter.type": "urn:entity:place", empty: "", list: ["a", "b"], none: undefined, skip: [] });
 		expect(params.toString()).toBe("filter.type=urn%3Aentity%3Aplace&list=a%2Cb&take=5");
@@ -196,6 +222,62 @@ describe("scoring", () => {
 	it("scales proximity", () => {
 		expect(proximity(0, 15)).toBe(1);
 		expect(proximity(30, 15)).toBe(0);
+	});
+
+	it("lets crowd relief top out earlier when asked", () => {
+		expect(crowdRelief(0.99, 0.9)).toBeCloseTo(0.5, 6);
+		expect(crowdRelief(0.99, 0.9, 10)).toBeCloseTo(1, 6);
+	});
+});
+
+describe("twin cities", () => {
+	const destination = (name: string, genres: [string, string][], popularity = 0.5): Locality => ({
+		id: name,
+		name,
+		lat: 0,
+		lon: 0,
+		popularity,
+		tags: genres.map(([slug, label]) => ({ id: `urn:tag:genre:destination:${slug}`, name: label, type: "urn:tag:genre:destination" })),
+	});
+
+	it("matches character on Qloo's genre names, whichever ID spells them", () => {
+		const lisbon = destination("Lisbon", [
+			["for_the_history", "For the History"],
+			["romantic_getaways", "Romantic Getaways"],
+			["art_culture", "Art & Culture"],
+			["with_kids", "With Kids"],
+		]);
+		const salamanca = destination("Salamanca", [
+			["scenic_picturesque", "Scenic & Picturesque"],
+			["history", "For the History"],
+		]);
+		expect(characterMatch(lisbon, salamanca)).toBeCloseTo(1 / Math.sqrt(8), 6);
+		expect(characterMatch(lisbon, destination("Vigo", [["beaches", "Beaches"]]))).toBe(0);
+		expect(characterMatch(lisbon, destination("Nowhere", []))).toBeUndefined();
+	});
+
+	it("counts a tenth of the attention as quiet, and a top destination as busy whatever the home city", () => {
+		expect(quietness(0.99, 0.5)).toBe(1);
+		expect(quietness(0.97, 0.76)).toBeCloseTo(Math.log10(0.24 / 0.03), 6);
+		expect(quietness(0.998, 0.97)).toBeCloseTo(0.3, 6);
+		expect(quietness(0.9, 0.95)).toBe(0);
+	});
+
+	it("draws several towns as one closed multipolygon", () => {
+		const wkt = wktCircles(
+			[
+				{ lat: 48.8, lon: 2.1, radiusKm: 5 },
+				{ lat: 49.07, lon: 1.53, radiusKm: 5 },
+			],
+			4,
+		);
+		const rings = wkt.slice("MULTIPOLYGON(((".length, -")))".length).split(")),((");
+		expect(rings).toHaveLength(2);
+		for (const ring of rings) {
+			const points = ring.split(",");
+			expect(points).toHaveLength(5);
+			expect(points[0]).toBe(points.at(-1));
+		}
 	});
 });
 

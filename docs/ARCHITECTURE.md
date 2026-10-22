@@ -13,7 +13,7 @@ flowchart LR
   C -- "tool calls" --> T
   T --> E["Engine: zoom levels · scoring · season · local plan"]
   E --> Q["Qloo client: GET-only · retries · normalize"]
-  Q --> K[("KV: private Qloo cache")]
+  Q --> K[("D1: private Qloo cache")]
   Q --> H["hackathon.api.qloo.com"]
   W --> D[("D1: journeys · conversations · replays")]
   U --> M["MapLibre + OpenFreeMap"]
@@ -38,13 +38,13 @@ flowchart LR
 | Favorites and vibe words | `GET /search` over film, TV, music, people, books and brands; `GET /v2/tags` with `filter.query`, `feature.semantic_search` and `filter.parents.types=urn:entity:place` |
 | Seasons | The city's locality (`GET /search` with `types=urn:entity:locality`, run in the background because boundary polygons make it slow), then its month tags through `GET /v2/insights` with `filter.type=urn:entity:locality` and `filter.results.entities=<locality>`: `peak_tourism_month`, `best_month_for_travel`, `off_season_month`, `worst_month_for_travel`, `{month}_event`, `{month}_travel_advisory`. Search results carry no month tags. |
 | Quiet twins in the same city | `filter.type=urn:entity:place`, `signal.interests.entities=<crowded spot>`, the city circle, `filter.tags=<the spot's own categories>` (a shrine's twins are shrines), `filter.popularity.max` just under the spot's, `filter.exclude.entities` |
-| Day trips | The crowded spots as signals within 120 km, their categories as tags; places at least 15 km out, grouped by town |
-| Twin cities | `filter.type=urn:entity:destination` with the home destination as signal (`take=50`, plus a second page for the world level), split by `properties.geocode.country_code`. Wards are merged into their city, and candidates busier than home are dropped. Each twin's sights must actually sit in it, which filters a few mislocated entries. |
+| Day trips | `filter.type=urn:entity:destination` with the home destination as signal inside a 120 km circle. Towns at least 15 km out that share a Qloo genre with home and are not busy in their own right get their places from one query over a `MULTIPOLYGON` of circles around them (`filter.location` takes any WKT). If too few qualify, places within 120 km, grouped by the town their address names, fill in. |
+| Twin cities | `filter.type=urn:entity:destination` with the home destination as signal (`take=50`, plus a second page for the world level), split by `properties.geocode.country_code`. Wards and duplicate entries are merged into their city, which takes the cluster's highest popularity. Candidates within 100 km, busier than home or below the 15th popularity percentile are dropped. Each twin's sights must sit in it, and their country corrects the odd mislocated entry (Batam filed under Singapore). Abroad, each further twin from a country already listed is discounted. |
 | Personal taste fit | `signal.interests.entities=<favorites>` + `signal.interests.tags=<vibes>` + `filter.results.entities=<candidates>`, for places and destinations alike |
 | Where your taste concentrates | `filter.type=urn:heatmap` around the city with taste signals |
-| Shared character | Place tags, and `GET /v2/analysis/compare` between destinations with transport and demographic tags filtered out |
+| Shared character | Destination genres ("Art & Culture", "Beaches", "Snow and Ski") shared with home, place tags, and `GET /v2/analysis/compare` between destinations with transport and demographic tags filtered out |
 
-All requests are GET with parameters in the query string, sent to `https://hackathon.api.qloo.com` with the `X-Api-Key` header. Qloo always returns full payloads (a city's boundary polygon alone can run to hundreds of kilobytes), so the client trims every response to the fields the engine reads before caching it, and identical requests in flight at the same time share one call. Trimmed responses are cached privately in Workers KV for seven days; the repository contains no Qloo data.
+All requests are GET with parameters in the query string, sent to `https://hackathon.api.qloo.com` with the `X-Api-Key` header. Qloo always returns full payloads (a city's boundary polygon alone can run to hundreds of kilobytes), so the client trims every response to the fields the engine reads before caching it, and identical requests in flight at the same time share one call. Trimmed responses are cached privately in D1 for 60 days; the repository contains no Qloo data. On the Workers Free plan D1 allows 100,000 row writes a day (KV allows 1,000) but only 50 queries per invocation, so lookups made together share one query, new responses are written alongside the next lookup or at the end of the run, and the cache stops at 24 queries, leaving the rest for journeys and the spending ledger.
 
 On cached responses a journey takes about 5–10 ms of CPU in a warm isolate (`scripts/cpu-bench.ts`), within the Workers Free plan's 10 ms limit; waiting on Qloo and the model does not count.
 
@@ -52,17 +52,18 @@ On cached responses a journey takes about 5–10 ms of CPU in a warm isolate (`s
 
 The score is computed in code, never by the language model. Weights per zoom level:
 
-| Component | Same city | Day trip | Same country / Beyond borders |
-| --- | --- | --- | --- |
-| Soul match: Qloo affinity to the crowded original | 0.40 | 0.35 | 0.40 |
-| Your taste: Qloo affinity to your favorites and vibes | 0.30 | 0.30 | 0.30 |
-| Crowd relief: popularity percentile drop | 0.25 | 0.20 | 0.20 |
-| Proximity: distance from the original | 0.05 | 0.15 | — |
-| Season fit: Qloo month tags vs. travel month | — | — | 0.10 |
+| Component | Same city | Day trip | Same country | Beyond borders |
+| --- | --- | --- | --- | --- |
+| Soul match: Qloo affinity to the crowded original | 0.40 | 0.30 | 0.30 | 0.30 |
+| Character: Qloo destination genres shared with the original | — | 0.15 | 0.25 | 0.25 |
+| Your taste: Qloo affinity to your favorites and vibes | 0.30 | 0.25 | 0.25 | 0.25 |
+| Crowd relief: popularity percentile drop | 0.25 | 0.15 | 0.20 | 0.20 |
+| Proximity: distance from the original | 0.05 | 0.15 (to 120 km) | 0.10 (to 1,500 km) | 0.10 (to 5,000 km) |
+| Season fit: Qloo month tags vs. travel month | — | — | 0.10 | 0.10 |
 
 A missing component is dropped and the remaining weights are renormalized. Destination entities carry no month tags, so season fit usually drops out for twin cities.
 
-Crowd relief compares tail shares. The 99.5th popularity percentile leaves 0.5% above it and the 62nd leaves 38%, a 76× ratio. The score is `log10(ratio) / 2`, capped at 1.
+Crowd relief compares tail shares. The 99.5th popularity percentile leaves 0.5% above it and the 62nd leaves 38%, a 76× ratio. The score is `log10(ratio) / 2`, capped at 1. For towns and twin cities it tops out at 10× (a tenth of the original's attention is quiet enough; a more obscure place is not better for it), and destinations above the 90th percentile are capped as busy in their own right, so London never counts as an escape from Barcelona.
 
 Popularity is Qloo's cultural-attention percentile, not a visitor count, so the interface never claims crowd sizes.
 

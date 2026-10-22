@@ -17,12 +17,13 @@ The usual "alternatives to Kyoto" lists are generic, and they come from the same
 Tell Elsewhere where you were headed, when, what you planned to see, and what you love: films, music, books, chefs. Then pick how far you'll go:
 
 - **Same city:** quieter twins of each crowded must-see, scored by Qloo place affinity and capped by popularity.
-- **Day trip:** nearby towns that share the hotspot's feel, outside the crowded city.
+- **Day trip:** nearby towns Qloo knows as destinations that share the hotspot's genres, outside the crowded city.
 - **Same country:** a twin city, found with Qloo's destination-to-destination affinity and re-scored against your taste.
 - **Beyond borders:** the same soul in another country.
 
-Every card shows a transparent **Dupe Score**, which combines four components:
+Every card shows a transparent **Dupe Score**, which combines:
 - soul match;
+- character, from the Qloo destination genres a twin shares with the original;
 - your taste;
 - crowd relief, from Qloo popularity percentiles;
 - proximity or season fit, from Qloo's peak-season and best-month tags.
@@ -46,7 +47,7 @@ Choose **Go like a local** and the agent builds the rest of the trip:
   - `/search` and `/v2/tags` resolve entities and vibes.
   - `/v2/insights` provides place, destination, locality and heatmap outputs, using location, category-tag, popularity, exclusion and result-entity filters.
   - Locality month tags draw a crowd calendar: peak, best and worst months, with each month's events and travel advisories. `/v2/analysis/compare` adds shared traits between twin cities.
-  - Every request is a GET to the hackathon host, cached privately in Workers KV.
+  - Every request is a GET to the hackathon host, cached privately in D1.
 - **Platform:**
   - One Cloudflare Worker serves the React app and a Hono API.
   - The agent streams its trace over server-sent events.
@@ -54,7 +55,7 @@ Choose **Go like a local** and the agent builds the rest of the trip:
   - MapLibre with OpenFreeMap draws the crowded spots, their quiet twins and the taste heatmap.
 - **Quality:**
   - Engine tests run against a synthetic transport that mimics Qloo's parameters.
-  - An eval script runs eight featured hotspots with four taste profiles each. It checks that each level returns the right kind of place, measures crowd relief, and measures how often the top pick changes with taste. [Live numbers.]
+  - An eval script runs eight featured hotspots with four taste profiles each. It checks that each level returns the right kind of place, measures crowd relief, and measures how often the top pick changes with taste. On live Qloo data all 64 level checks pass, the alternatives average 88% crowd relief, and the top pick changes with the traveler's taste in 6 of 16 scenario-levels.
 
 ## Challenges we ran into
 
@@ -69,11 +70,13 @@ Choose **Go like a local** and the agent builds the rest of the trip:
 
 - Four zoom levels that turn "go somewhere else" into a choice travelers can actually make, even after booking flights.
 - A Dupe Score where every number traces to a Qloo field.
-- [Personalization result from the live eval.]
+- Taste changes the answer: on live data, three persona profiles change the top pick in 6 of 16 scenario-levels. A food explorer escaping the Eiffel Tower gets Le Marais, a contemplative one the Colonne Vendôme.
 
 ## What we learned
 
-[After live testing.]
+- Qloo's destination-to-destination affinity mirrors who travels as much as what a place is like: for Kyoto, its closest foreign matches were Korean beach cities, and for Seoul, Ulaanbaatar, through shared audiences. Weighing it against the destination genres Qloo tags (Art & Culture, For the History, Snow and Ski) turned it into a "same soul" signal: Kyoto's twin abroad is now Tainan, Taiwan's old capital, and Interlaken's is Zell am See.
+- Qloo already knows the towns travelers know. Asking for destinations inside a 120 km circle returns Versailles, Fontainebleau and Giverny around Paris, and one query over a `MULTIPOLYGON` of circles fetches all their places at once.
+- A free plan is a design constraint, not a footnote: D1's 50 queries per invocation led to a cache that batches lookups and writes, and Qloo popularity percentiles needed care (a city listed twice at the 76th and 96th percentile takes the higher reading).
 
 ## What's next
 
@@ -83,7 +86,7 @@ Choose **Go like a local** and the agent builds the rest of the trip:
 
 ## Built with
 
-Qloo Insights API · Claude Haiku 5.5 via OpenRouter · Cloudflare Workers, KV, D1 · Hono · React · Vite · Tailwind CSS · MapLibre GL · OpenFreeMap · Zod · Vitest
+Qloo Insights API · Claude Haiku 5.5 via OpenRouter · Cloudflare Workers, D1 · Hono · React · Vite · Tailwind CSS · MapLibre GL · OpenFreeMap · Zod · Vitest
 
 ## Testing instructions
 
