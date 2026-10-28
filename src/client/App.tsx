@@ -360,13 +360,15 @@ export function App() {
 		if (!view.journeyId) return;
 		const events = await api.events(view.journeyId).catch(() => []);
 		if (events.length === 0) return;
-		dispatch({ type: "begin", activity: "journey", request: view.request });
+		dispatch({ type: "begin", activity: "journey", request: view.request, journeyId: view.journeyId });
 		let previous = 0;
 		for (const { t, e } of events) {
 			await new Promise((resolve) => setTimeout(resolve, Math.min(700, Math.max(0, (t - previous) / 2))));
 			previous = t;
 			dispatch({ type: "event", event: e });
 		}
+		// Saved runs end before their "done" event is recorded, so settle the replay here.
+		dispatch({ type: "settled" });
 	}, [view.journeyId, view.request]);
 
 	const currentModes = view.modes ?? modes;

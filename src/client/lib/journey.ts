@@ -48,7 +48,8 @@ export const emptyJourney: JourneyView = {
 
 export type JourneyAction =
 	| { type: "event"; event: AgentEvent }
-	| { type: "begin"; activity: "journey" | "plan" | "message"; request?: TripRequest; userMessage?: string }
+	/** `journeyId` keeps a replayed journey's id, so the snapshot loader does not refetch it mid-replay. */
+	| { type: "begin"; activity: "journey" | "plan" | "message"; request?: TripRequest; userMessage?: string; journeyId?: string }
 	| { type: "failed"; message: string }
 	/** The stream ended; settle a run that never received "done" (e.g. it failed server-side). */
 	| { type: "settled" }
@@ -94,7 +95,7 @@ export function journeyReducer(state: JourneyView, action: JourneyAction): Journ
 			return applyEvent(state, action.event);
 		case "begin": {
 			if (action.activity === "journey") {
-				return { ...emptyJourney, status: "running", activity: "journey", request: action.request };
+				return { ...emptyJourney, journeyId: action.journeyId, status: "running", activity: "journey", request: action.request };
 			}
 			const narrative = action.userMessage
 				? `${state.narrative}${state.narrative ? "\n\n" : ""}› ${action.userMessage}\n\n`
